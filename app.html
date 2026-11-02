@@ -1,0 +1,42 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><title>Welcome Familio</title>
+<style>
+body{font:14px system-ui;margin:0;background:#fafaf7;color:#222}main{max-width:860px;margin:auto;padding:16px}
+fieldset{border:1px solid #cfc9b5;border-radius:8px;margin:10px 0;background:#fff}legend{font-weight:600}
+label{display:block;margin:5px 0}button{padding:7px 14px;border:1px solid #9d9577;border-radius:6px;background:#fff;cursor:pointer;font:inherit}
+button.go{background:#2f6b3a;color:#fff;border-color:#2f6b3a}button:disabled{opacity:.45}
+#log{height:240px;overflow:auto;background:#111;color:#cfe;font:12px monospace;padding:8px;white-space:pre-wrap;border-radius:6px}
+textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type=number]{padding:4px;width:260px}small{color:#666}
+</style><main>
+<h2>Welcome Familio <small id="modeName"></small></h2>
+<fieldset><legend>1. Вход на сайт</legend><div id="auth">Проверка…</div></fieldset>
+<fieldset id="srcBox"><legend>2. Источник</legend>
+ <label id="urlRow">Ссылка начала сбора: <input type="text" id="startUrl" style="width:520px"></label>
+ <div id="m4" hidden><label>Файл ссылок .html: <input type="file" id="linksFile" accept=".html,.htm"></label>
+ Из каких разделов каждого аккаунта собирать:
+ <label><input type="checkbox" id="secPeople" checked> «Люди»</label><label><input type="checkbox" id="secSurnames"> «Фамилии»</label>
+ <label>Свой раздел (путь, например /tree): <input type="text" id="secCustom"></label></div>
+ <label>Ходить по связям: <input type="checkbox" id="fSpouses" checked> супруги <input type="checkbox" id="fChildren" checked> дети <input type="checkbox" id="fParents"> родители</label>
+ <label>Глубина связей (0 — без ограничений): <input type="number" id="depth" value="0" min="0" style="width:70px"></label>
+ <label>Пауза между запросами, мс: <input type="number" id="delay" value="800" min="0" style="width:90px"></label>
+</fieldset>
+<fieldset><legend>3. Рабочая папка</legend>
+ <label>Имя папки (дата добавится автоматически): <input type="text" id="folderName" value="Welcome_Familio"></label>
+ <button id="pickDir">Выбрать расположение…</button> <span id="dirName">не выбрано</span>
+ <small><br>Создаётся папка «имя_ГГГГ-ММ-ДД»: в ней Excel, GEDCOM, оригинал GEDCOM и папка media.</small></fieldset>
+<fieldset><legend>4. Сохранение результатов</legend>
+ <label><input type="checkbox" id="outXlsx" checked> В отдельный файл Excel</label>
+ <label><input type="checkbox" id="outGed"> Сравнить и дополнить свой файл GEDCOM (оригинал сохраняется): <input type="file" id="gedFile" accept=".ged"></label>
+ <div style="margin-left:22px">При отличии данных:
+ <label><input type="radio" name="act" value="replace"> полностью доверять источнику и ЗАМЕНИТЬ (автоматически)</label>
+ <label><input type="radio" name="act" value="append" checked> вписывать дополнениями к существующим (автоматически)</label>
+ <label><input type="radio" name="act" value="confirm"> замена или дополнение — с подтверждением</label>
+ <label><input type="radio" name="act" value="new"> собрать всё в НОВЫЙ GEDCOM-файл</label></div>
+ <label><input type="checkbox" id="saveMedia" checked> Сохранять фото и медиафайлы в папку media</label></fieldset>
+<fieldset><legend>Настройки сайта (профиль разбора, JSON)</legend>
+ <small>Правила распознавания страниц familio.org. При смене вёрстки поправьте здесь.</small><textarea id="profile"></textarea></fieldset>
+<p><button class="go" id="start">Начать</button> <button id="pause" disabled>Пауза</button> <button id="stop" disabled>Стоп</button>
+ <span id="count"></span></p>
+<div id="confirmBox" hidden><fieldset><legend>Подтверждение</legend><pre id="confirmText"></pre>
+ <button data-a="replace">Заменить</button> <button data-a="append">Дополнить</button> <button data-a="skip">Пропустить</button></fieldset></div>
+<div id="log"></div></main>
+<script src="extract.js"></script><script src="gedcom.js"></script><script src="xlsx.js"></script><script src="app.js"></script></html>
