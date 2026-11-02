@@ -79,7 +79,10 @@
       while (queue.length && !stopped) {
         await checkpoint(); if (stopped) break;
         const [u, dir, dp] = queue.shift(); let p;
-        try { p = Extract.person(await getDoc(u), u, prof); } catch (e) { log('✖ ' + u + ' — ' + e.message); continue; }
+        try { const main = await getDoc(u), ex = {};
+          if ($('sSpouses').checked || $('sChildren').checked || $('sFather').checked || $('sMother').checked || $('sRelatives').checked) ex.rel = await getDoc(u.split('?')[0] + prof.tabs.relatives);
+          if ($('sEvents').checked) ex.ev = await getDoc(u.split('?')[0] + prof.tabs.events);
+          p = Extract.person(main, u, prof, ex); } catch (e) { log('✖ ' + u + ' — ' + e.message); continue; }
         if (p.hidden && $('skipHidden').checked) { skipped++; log('⛔ скрытая персона пропущена: ' + u); await sleep(+$('delay').value); continue; }
         people[p.id] = p; $('count').textContent = `собрано: ${Object.keys(people).length}, в очереди: ${queue.length}, скрытых пропущено: ${skipped}`;
         log(`✔ ${p.surname} ${p.given} ${p.patronymic} ${p.birthYear} [${dir}]`);
