@@ -1,11 +1,29 @@
 {
   "manifest_version": 3,
   "name": "extension Welcome Familio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Сбор людей и семейных связей с familio.org: Excel и GEDCOM (замена, дополнение, с подтверждением, новый файл).",
   "minimum_chrome_version": "120",
-  "action": { "default_title": "Welcome Familio", "default_popup": "popup.html" },
-  "background": { "service_worker": "background.js" },
-  "permissions": ["tabs", "scripting", "storage", "downloads"],
-  "host_permissions": ["https://familio.org/*", "https://*.familio.org/*"]
+  "action": {
+    "default_title": "Welcome Familio",
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://familio.org/*",
+    "https://*.familio.org/*"
+  ],
+  "icons": {
+    "128": "icon.png"
+  },
+  "author": "Фомка добрых дел (Crowbar of Goodness): Мр. Фомка (Mr. Crowby) и Мастер Добрых дел"
 }

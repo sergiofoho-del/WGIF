@@ -71,17 +71,22 @@
         }
       }
       // 2. обход карточек и связей
-      const maxDepth = +$('depth').value || 0; const people = {}; const queue = seeds.map((u) => [u, 0]); const seen = new Set(seeds);
+      const maxDepth = +$('depth').value || 0; const people = {}; const scope = document.querySelector('input[name=scope]:checked').value;
+      const startDir = scope === 'anc' ? 'up' : scope === 'desc' ? 'down' : 'self';
+      const opt = { maleOnly: document.querySelector('input[name=sex]:checked').value === 'm',
+        sec: { father: $('sFather').checked, mother: $('sMother').checked, spouses: $('sSpouses').checked, children: $('sChildren').checked } };
+      const queue = seeds.map((u) => [u, startDir, 0]); const seen = new Set(seeds); let skipped = 0;
       while (queue.length && !stopped) {
         await checkpoint(); if (stopped) break;
-        const [u, dp] = queue.shift(); let p;
+        const [u, dir, dp] = queue.shift(); let p;
         try { p = Extract.person(await getDoc(u), u, prof); } catch (e) { log('✖ ' + u + ' — ' + e.message); continue; }
-        people[p.id] = p; $('count').textContent = `собрано: ${Object.keys(people).length}, в очереди: ${queue.length}`;
-        log(`✔ ${p.surname} ${p.given} ${p.patronymic} ${p.birthYear}`);
-        const rel = []; if ($('fSpouses').checked) rel.push(['spousesUrl', 'spouses']); if ($('fChildren').checked) rel.push(['childrenUrl', 'children']); if ($('fParents').checked) rel.push(['parentsUrl', 'parents']);
-        p.spouses = []; p.children = []; p.parents = [];
-        rel.forEach(([from, to]) => p[from].forEach((l) => { p[to].push(Extract.idOf(l));
-          if (!seen.has(l) && (!maxDepth || dp < maxDepth)) { seen.add(l); queue.push([l, dp + 1]); } }));
+        if (p.hidden && $('skipHidden').checked) { skipped++; log('⛔ скрытая персона пропущена: ' + u); await sleep(+$('delay').value); continue; }
+        people[p.id] = p; $('count').textContent = `собрано: ${Object.keys(people).length}, в очереди: ${queue.length}, скрытых пропущено: ${skipped}`;
+        log(`✔ ${p.surname} ${p.given} ${p.patronymic} ${p.birthYear} [${dir}]`);
+        p.spouses = opt.sec.spouses ? p.spousesUrl.map(Extract.idOf) : []; p.children = opt.sec.children ? p.childrenUrl.map(Extract.idOf) : [];
+        p.parents = [].concat(opt.sec.father ? p.fatherUrl : [], opt.sec.mother ? p.motherUrl : []).map(Extract.idOf);
+        if (!p.parents.length && (opt.sec.father || opt.sec.mother)) p.parents = p.parentsUrl.map(Extract.idOf);
+        if (!maxDepth || dp < maxDepth) Extract.expand(p, dir, opt).forEach(([l, d]) => { if (!seen.has(l)) { seen.add(l); queue.push([l, d, dp + 1]); } });
         if ($('saveMedia').checked) for (let i = 0; i < p.media.length && !stopped; i++) {
           try { const r = await fetch(p.media[i], { credentials: 'include' }); if (!r.ok) continue; const ext = (p.media[i].split('?')[0].match(/\.\w{2,4}$/) || ['.jpg'])[0];
             const name = `${p.id}_${p.surname}_${i + 1}${ext}`.replace(/[\\/:*?"<>|]/g, '_'); await writeFile(mediaDir, name, await r.blob()); (p.mediaFiles = p.mediaFiles || []).push(name); } catch (e) {}
@@ -93,8 +98,8 @@
       const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: ${list.length} чел.`);
       // 3. сохранение
       if ($('outXlsx').checked && list.length) {
-        const rows = [['ID', 'Фамилия', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'Файлы медиа', 'Ссылка']];
-        list.forEach((p) => rows.push([p.id, p.surname, p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), (p.mediaFiles || []).join(', '), p.url]));
+        const rows = [['ID', 'Фамилия', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
+        list.forEach((p) => rows.push([p.id, p.surname, p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
         await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }])); log('Сохранён Familio_люди.xlsx');
       }
       if ($('outGed').checked && list.length) {

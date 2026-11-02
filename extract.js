@@ -14,8 +14,11 @@
     sections: {
       spouses: 'Супруг|Жена|Муж|Брак',
       children: 'Дети|Ребен',
-      parents: 'Родител|Отец|Мать'
+      parents: 'Родител|Отец|Мать',
+      father: 'Отец', mother: 'Мать',
+      events: 'События', relatives: 'Родственники', discussion: 'Обсуждение'
     },
+    hidden: 'Скрыт(ая|ый|ые) персон|конфиденциальн',   // пометка конфиденциальности — такие персоны не собираются
     next: 'a[rel=next], .pagination .next a, a.next',
     peoplePath: '/people', surnamesPath: '/surnames'
   };
@@ -51,6 +54,13 @@
     }
     return [];
   }
+  function sectionText(doc, re) {
+    const rx = new RegExp('^(' + re + ')\\b', 'i');
+    for (const h of doc.querySelectorAll('h1,h2,h3,h4,h5,dt,th,b,strong,legend,.section-title')) {
+      if (rx.test(txt(h)) && txt(h).length < 40) { const box = h.nextElementSibling; if (box) return txt(box).slice(0, 5000); }
+    }
+    return '';
+  }
   function person(doc, url, profile) {
     profile = Object.assign({}, DEFAULT_PROFILE, profile || {});
     const L = profile.labels, S = profile.sections;
@@ -65,14 +75,35 @@
     const sx = labelValue(doc, L.sex); p.sex = /^м/i.test(sx) ? 'M' : /^ж/i.test(sx) ? 'F' : '';
     p.spousesUrl = section(doc, S.spouses, url, profile); p.childrenUrl = section(doc, S.children, url, profile);
     p.parentsUrl = section(doc, S.parents, url, profile);
+    p.fatherUrl = section(doc, S.father, url, profile); p.motherUrl = section(doc, S.mother, url, profile);
+    if (!p.parentsUrl.length) p.parentsUrl = p.fatherUrl.concat(p.motherUrl);
+    p.hidden = new RegExp(profile.hidden, 'i').test(txt(doc.body));
+    p.events = sectionText(doc, S.events); p.relativesText = sectionText(doc, S.relatives); p.discussion = sectionText(doc, S.discussion);
     p.media = []; const seen = new Set();
     doc.querySelectorAll('img[src], a[href$=".jpg"], a[href$=".jpeg"], a[href$=".png"], video source[src], a[href$=".pdf"]').forEach((e) => {
       const u = abs(e.getAttribute('src') || e.getAttribute('href'), url);
       if (u && !/avatar|icon|logo|sprite|emoji|\/static\//i.test(u) && !seen.has(u)) { seen.add(u); p.media.push(u); }
     });
     p.notes = [];
+    if (p.events) p.notes.push('События: ' + p.events);
+    if (p.relativesText) p.notes.push('Родственники: ' + p.relativesText);
     return p;
   }
-  const api = { DEFAULT_PROFILE, person, personLinks, idOf, abs };
+  // Что читать дальше после карточки p. dir: 'self' | 'up' (предки) | 'down' (потомки) | 'side' (семейные связи, без дальнейшего хода)
+  // opt: {maleOnly, sec:{father,mother,spouses,children}}
+  function expand(p, dir, opt) {
+    const sec = opt.sec || {}, out = [];
+    if (dir === 'up') {
+      const fa = sec.father !== false ? (p.fatherUrl || []) : [], mo = sec.mother !== false && !opt.maleOnly ? (p.motherUrl || []) : [];
+      const both = !fa.length && !mo.length ? (opt.maleOnly ? [] : p.parentsUrl || []) : [];
+      fa.concat(mo, both).forEach((u) => out.push([u, 'up']));
+      if (sec.spouses !== false) (p.spousesUrl || []).forEach((u) => out.push([u, 'side']));
+    } else if (dir === 'down') {
+      if (sec.children !== false && !(opt.maleOnly && p.sex === 'F')) (p.childrenUrl || []).forEach((u) => out.push([u, 'down']));
+      if (sec.spouses !== false) (p.spousesUrl || []).forEach((u) => out.push([u, 'side']));
+    }
+    return out;
+  }
+  const api = { expand, DEFAULT_PROFILE, person, personLinks, idOf, abs };
   root.Extract = api; if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

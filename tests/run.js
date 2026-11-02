@@ -21,3 +21,10 @@ require('../xlsx.js'); (async () => {
   const b = globalThis.Xlsx.build([{ name: 'Люди', rows: [['Имя', 'Год'], ['Иван', 1850]] }]);
   require('fs').writeFileSync(process.env.TMPDIR ? process.env.TMPDIR + '/t.xlsx' : '/tmp/t.xlsx', Buffer.from(await b.arrayBuffer())); console.log('xlsx written');
 })();
+const E = require('../extract.js'); const assert2 = require('assert');
+const pp = { sex: 'M', fatherUrl: ['f'], motherUrl: ['m'], spousesUrl: ['s'], childrenUrl: ['c'], parentsUrl: [] };
+assert2.deepStrictEqual(E.expand(pp, 'up', { maleOnly: true, sec: {} }), [['f', 'up'], ['s', 'side']]);
+assert2.deepStrictEqual(E.expand(pp, 'up', { sec: {} }).map((x) => x[0]), ['f', 'm', 's']);
+assert2.deepStrictEqual(E.expand({ ...pp, sex: 'F' }, 'down', { maleOnly: true, sec: {} }), [['s', 'side']]);
+assert2.deepStrictEqual(E.expand(pp, 'self', { sec: {} }), []);
+console.log('expand: OK');

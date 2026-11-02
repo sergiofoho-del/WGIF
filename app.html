@@ -7,7 +7,7 @@ button.go{background:#2f6b3a;color:#fff;border-color:#2f6b3a}button:disabled{opa
 #log{height:240px;overflow:auto;background:#111;color:#cfe;font:12px monospace;padding:8px;white-space:pre-wrap;border-radius:6px}
 textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type=number]{padding:4px;width:260px}small{color:#666}
 </style><main>
-<h2>Welcome Familio <small id="modeName"></small></h2>
+<h2><img src="icon.png" width="28" style="vertical-align:middle"> Welcome Familio <small id="modeName"></small></h2>
 <fieldset><legend>1. Вход на сайт</legend><div id="auth">Проверка…</div></fieldset>
 <fieldset id="srcBox"><legend>2. Источник</legend>
  <label id="urlRow">Ссылка начала сбора: <input type="text" id="startUrl" style="width:520px"></label>
@@ -15,8 +15,19 @@ textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type
  Из каких разделов каждого аккаунта собирать:
  <label><input type="checkbox" id="secPeople" checked> «Люди»</label><label><input type="checkbox" id="secSurnames"> «Фамилии»</label>
  <label>Свой раздел (путь, например /tree): <input type="text" id="secCustom"></label></div>
- <label>Ходить по связям: <input type="checkbox" id="fSpouses" checked> супруги <input type="checkbox" id="fChildren" checked> дети <input type="checkbox" id="fParents"> родители</label>
- <label>Глубина связей (0 — без ограничений): <input type="number" id="depth" value="0" min="0" style="width:70px"></label>
+ <div>Собирать разделы карточки:
+ <label><input type="checkbox" id="sFather" checked> Отец</label><label><input type="checkbox" id="sMother" checked> Мать</label>
+ <label><input type="checkbox" id="sSpouses" checked> Супруги</label><label><input type="checkbox" id="sChildren" checked> Дети</label>
+ <label><input type="checkbox" id="sEvents" checked> События</label><label><input type="checkbox" id="sRelatives"> Родственники</label>
+ <label><input type="checkbox" id="sDiscussion"> Обсуждение</label></div>
+ <div>Охват сбора:
+ <label><input type="radio" name="scope" value="self" checked> 1. Данные только текущей персоны</label>
+ <label><input type="radio" name="scope" value="anc"> 2. Все предки — родители и их семейные связи</label>
+ <label style="margin-left:22px"><input type="radio" name="sex" value="all" checked> всех (по мужчинам и женщинам)</label>
+ <label style="margin-left:22px"><input type="radio" name="sex" value="m"> только мужчин</label>
+ <label><input type="radio" name="scope" value="desc"> 3. Все потомки — дети и их семейные связи (пол — по выбору выше)</label></div>
+ <label><input type="checkbox" id="skipHidden" checked> Только открытые сведения: пропускать персоны с пометкой конфиденциальности («Скрытая персона»)</label>
+ <label>Глубина (0 — без ограничений): <input type="number" id="depth" value="0" min="0" style="width:70px"></label>
  <label>Пауза между запросами, мс: <input type="number" id="delay" value="800" min="0" style="width:90px"></label>
 </fieldset>
 <fieldset><legend>3. Рабочая папка</legend>
@@ -38,5 +49,5 @@ textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type
  <span id="count"></span></p>
 <div id="confirmBox" hidden><fieldset><legend>Подтверждение</legend><pre id="confirmText"></pre>
  <button data-a="replace">Заменить</button> <button data-a="append">Дополнить</button> <button data-a="skip">Пропустить</button></fieldset></div>
-<div id="log"></div></main>
+<div id="log"></div><p><small>Фомка добрых дел (Crowbar of Goodness): Мр. Фомка (Mr. Crowby) и Мастер Добрых дел</small></p></main>
 <script src="extract.js"></script><script src="gedcom.js"></script><script src="xlsx.js"></script><script src="app.js"></script></html>
