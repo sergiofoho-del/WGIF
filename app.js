@@ -7,6 +7,7 @@
   if (mode === 4) { $('m4').hidden = false; $('urlRow').hidden = true; }
   $('profile').value = JSON.stringify(Extract.DEFAULT_PROFILE, null, 1);
   let dirHandle = null, gedText = '', gedName = '', paused = false, stopped = false, running = false, wake = null;
+  const WGIF = 'WGIF · Welcome, Grafted Into the Fam!';
   const log = (s) => { const l = $('log'); l.textContent += s + '\n'; l.scrollTop = l.scrollHeight; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const today = () => new Date().toISOString().slice(0, 10);
@@ -63,6 +64,7 @@
 
   async function run() {
     running = true; stopped = false; paused = false;
+    log('🌳 ' + WGIF + ' Начинаем собирать семью — режим: ' + NAMES[mode] + '.');
     ['start'].forEach((i) => ($(i).disabled = true)); $('pause').disabled = $('stop').disabled = false;
     try {
       const prof = profile(); chrome.storage.local.set({ profile: $('profile').value });
@@ -113,7 +115,7 @@
       }
       // children/parents взаимно: родитель→дети достаточно для GEDCOM
       Object.values(people).forEach((p) => (p.parents || []).forEach((pid) => { const par = people[pid]; if (par && !(par.children || []).includes(p.id)) (par.children = par.children || []).push(p.id); }));
-      const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: ${list.length} чел.`);
+      const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: привито к древу ${list.length} чел.`);
       // 3. сохранение
       if ($('outXlsx').checked && list.length) {
         const rows = [['ID', 'Фамилия', 'Девичья фамилия (у мужчин — до смены)', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
@@ -130,7 +132,7 @@
         const out = act === 'new' ? 'Familio_новый.ged' : gedName.replace(/\.ged$/i, '') + '_обновлён.ged';
         await writeFile(root, out, res.text); log(`Сохранён ${out}: ${JSON.stringify(res.stats)}`);
       }
-      log('Готово. Папка: ' + root.name);
+      log('🌳 Готово. Папка: ' + root.name + '\n   ' + (stopped ? 'Сбор остановлен — продолжить можно в любой момент: ни одна ветвь не потеряна.' : 'Ни одна ветвь не потеряна навсегда: связаны кровью, объединены историей, привиты обратно домой.'));
     } catch (e) { log('✖ ' + e.message); }
     running = false; $('start').disabled = false; $('pause').disabled = $('stop').disabled = true;
   }

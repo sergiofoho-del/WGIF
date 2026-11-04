@@ -1,4 +1,16 @@
-# extension Welcome Familio (EWF)
+# 🌳 WGIF — Welcome, Grafted Into the Fam!
+
+Ранее: «extension Welcome Familio» (EWF). Теперь название расширения — **Welcome, Grafted Into the Fam**, сокращённо **WGIF**.
+
+- Welcome — Добро пожаловать
+- Grafted — Привитые (как родная ветвь к древу)
+- Into the — В состав
+- Fam — Нашей семьи
+
+> Welcome, Grafted Into the Fam! (Добро пожаловать, привитые к нашей семье!)
+> «No branch is lost forever. Connected by blood, united by history, grafted back home.» — Ни одна ветвь не потеряна навсегда. Связаны кровью, объединены историей, привиты обратно домой.
+> «Bound by blood, strengthened by choice» — Связаны кровью, укреплены выбором. «Rooted in the past, growing for the future» — Укоренены в прошлом, растём ради будущего.
+
 Расширение Chrome для сбора людей и семейных связей с familio.org (проект «Welcome Familio», WF).
 
 Установка: chrome://extensions → «Режим разработчика» → «Загрузить распакованное» → эта папка.
