@@ -10,7 +10,7 @@ textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type
 <h2><img src="icons/icon48.png" width="28" style="vertical-align:middle"> Welcome Familio <small id="modeName"></small></h2>
 <fieldset><legend>1. Вход на сайт</legend><div id="auth">Проверка…</div></fieldset>
 <fieldset id="srcBox"><legend>2. Источник</legend>
- <label id="urlRow">Ссылка начала сбора: <input type="text" id="startUrl" style="width:520px"></label>
+ <label id="urlRow">Ссылка начала сбора (аккаунт: …/users/&lt;id&gt;; персона: …/persons/&lt;id&gt;): <input type="text" id="startUrl" style="width:520px"></label>
  <div id="m4" hidden><label>Файл ссылок .html: <input type="file" id="linksFile" accept=".html,.htm"></label>
  Из каких разделов каждого аккаунта собирать:
  <label><input type="checkbox" id="secPeople" checked> «Люди»</label><label><input type="checkbox" id="secSurnames"> «Фамилии»</label>
@@ -21,6 +21,7 @@ textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type
  <label><input type="checkbox" id="sEvents" checked> События</label><label><input type="checkbox" id="sRelatives"> Родственники</label>
  <label><input type="checkbox" id="sDiscussion"> Обсуждение</label></div>
  <div>Охват сбора:
+ <label><input type="radio" name="scope" value="all"> 0. Вся родовая ветка — переходить по всем связям (отец, мать, супруги, дети, братья и сёстры)</label>
  <label><input type="radio" name="scope" value="self" checked> 1. Данные только текущей персоны</label>
  <label><input type="radio" name="scope" value="anc"> 2. Все предки — родители и их семейные связи</label>
  <label style="margin-left:22px"><input type="radio" name="sex" value="all" checked> всех (по мужчинам и женщинам)</label>

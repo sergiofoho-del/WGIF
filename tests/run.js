@@ -21,6 +21,8 @@ const P = [
   assert(r.stats.added === 0 && r.text.includes('/Жегалова/') && r.text.includes('2 TYPE birth') && r.text.includes('3 TIME 05:51:07'), r.text);
   r = await G.merge('', [{ id: 'z', given: 'Мария', patronymic: 'Федоровна', surname: 'Иванова', maiden: 'Жегалова', sex: 'F' }], { mode: 'new', now });
   assert(r.text.includes('1 NAME Мария Федоровна /Жегалова/') && r.text.includes('1 NAME Мария Федоровна /Иванова/') && r.text.includes('2 TYPE married'));
+  r = await G.merge('', [{ id: 'm', given: 'Петр', patronymic: 'Иванович', surname: 'Иванов', former: 'Жепанин', sex: 'M' }], { mode: 'new', now });
+  assert(r.text.includes('1 NAME Петр Иванович /Иванов/') && r.text.includes('1 NAME Петр Иванович /Жепанин/') && r.text.includes('2 TYPE aka'));
   console.log('gedcom: OK');
 })().catch((e) => { console.error(e); process.exit(1); });
 require('../xlsx.js'); (async () => {

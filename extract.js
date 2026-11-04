@@ -18,6 +18,9 @@
       father: 'Отец', mother: 'Мать',
       events: 'События', relatives: 'Родственники', discussion: 'Обсуждение'
     },
+    exclude: 'header, nav, footer, aside',   // шапка и технический правый сектор — не собираем
+    accountHeading: 'Люди, добавленные пользователем',
+    accountListUrl: '?tab=1&page-userPersons=',   // страницы списка аккаунта: …/users/<id>?tab=1&page-userPersons=N
     hidden: 'Скрыт(ая|ый|ые) персон',   // пометка конфиденциальности — такие персоны не собираются
     next: 'a[rel=next], .pagination .next a, a.next',
     peoplePath: '/profile/my-persons', surnamesPath: '/profile/my-surnames',
@@ -49,11 +52,51 @@
       return 'relative';
     };
     doc.querySelectorAll('a[href]').forEach((a) => {
-      if (a.closest('header, nav, footer')) return;
+      if (a.closest(profile.exclude || 'header, nav, footer, aside')) return;
       const u = abs(a.getAttribute('href'), base); if (!u || !rx.test(new URL(u).pathname) || idOf(u) === idOf(base)) return;
       const key = idOf(u) + label(a); if (seen.has(key)) return; seen.add(key);
       out.push(Object.assign({ url: u, id: idOf(u), rel: label(a), text: txt(a) }, parseName(txt(a))));
     });
+    return out;
+  }
+  const STAT = [['father', /^отец/i], ['mother', /^мать/i], ['spouses', /(муж|жена|супруг)/i], ['children', /^(сын|дочь|ребен|дет)/i], ['siblings', /^(брат|сестра)/i]];
+  const MALE = /^(отец|сын|брат|муж)/i, FEMALE = /^(мать|дочь|сестра|жена)/i;
+  const COLS = [['status', /^статус/i], ['name', /^фамилия имя отчество/i], ['birthDate', /^дата рождения/i], ['birthPlace', /^место рождения/i], ['deathDate', /^дата смерти/i], ['deathPlace', /^место смерти/i], ['residence', /^место жительства/i]];
+  // Таблица состава семьи: столбцы «статус», «Фамилия Имя Отчество», «Дата рождения», «Место рождения», «Дата смерти», «Место смерти» (+ «Место жительства»).
+  // Ссылки в столбцах мест собираются (placeUrl), но по ним не переходят.
+  function familyTable(doc, base, profile) {
+    const rx = new RegExp(profile.personUrl, 'i'); const ex = profile.exclude || 'header, nav, footer, aside';
+    let hr = null, best = 1e9;
+    doc.querySelectorAll('tr, div, li, ul').forEach((e) => { if (e.closest(ex) || e.children.length < 4) return;
+      const t = [...e.children].map(txt); if (t.some((x) => COLS[2][1].test(x)) && t.some((x) => COLS[3][1].test(x)) && e.querySelectorAll('*').length < best) { hr = e; best = e.querySelectorAll('*').length; } });
+    if (!hr) return [];
+    const idx = {}; [...hr.children].forEach((c, i) => { const t = txt(c); const k = COLS.find(([, r]) => r.test(t)); if (k && idx[k[0]] === undefined) idx[k[0]] = i; });
+    let rows = []; const after = (el) => { const r = []; for (let q = el.nextElementSibling; q; q = q.nextElementSibling) r.push(q); return r; };
+    if (hr.tagName === 'TR') rows = [...hr.closest('table').querySelectorAll('tr')].filter((r) => r !== hr);
+    else { rows = after(hr); if (!rows.some((r) => r.querySelector('a[href]'))) rows = after(hr.parentElement).flatMap((x) => (x.children.length >= 4 ? [x] : [...x.children])); }
+    const out = [];
+    rows.forEach((r) => { const cells = [...r.children]; if (cells.length < 3) return;
+      const cell = (k) => (idx[k] !== undefined ? cells[idx[k]] : null);
+      const nc = cell('name') || r; const a = [...nc.querySelectorAll('a[href]')].find((x) => rx.test(abs(x.getAttribute('href'), base)));
+      if (!a) return; const u = abs(a.getAttribute('href'), base); if (idOf(u) === idOf(base)) return;
+      const status = txt(cell('status')); const rel = (STAT.find(([, x]) => x.test(status)) || ['relative'])[0];
+      const place = (k) => { const c = cell(k); const l = c && c.querySelector('a[href]'); return { text: txt(c), url: l ? abs(l.getAttribute('href'), base) : '' }; };
+      const nm = parseName(txt(a)); const sex = MALE.test(status) ? 'M' : FEMALE.test(status) ? 'F' : '';
+      out.push(Object.assign({ url: u, id: idOf(u), rel, status, text: txt(a), sex, birthDate: txt(cell('birthDate')), deathDate: txt(cell('deathDate')),
+        birthPlace: place('birthPlace').text, birthPlaceUrl: place('birthPlace').url, deathPlace: place('deathPlace').text, deathPlaceUrl: place('deathPlace').url,
+        residence: place('residence').text, residenceUrl: place('residence').url }, nm));
+    });
+    return out;
+  }
+  // Страница аккаунта: ссылки на людей под заголовком «Люди, добавленные пользователем»
+  function accountPersons(doc, base, profile) {
+    const ex = profile.exclude || 'header, nav, footer, aside', rx = new RegExp(profile.personUrl, 'i'); const hq = new RegExp(profile.accountHeading, 'i');
+    let scope = null;
+    for (const h of doc.querySelectorAll('h1,h2,h3,h4,h5,div,span,p')) { if (h.children.length > 2 || !hq.test(txt(h)) || txt(h).length > 80) continue;
+      for (let e = h; e && e !== doc.body; e = e.parentElement) { if ([...e.querySelectorAll('a[href]')].some((a) => rx.test(abs(a.getAttribute('href'), base)))) { scope = e; break; } } if (scope) break; }
+    const out = []; const seen = new Set();
+    (scope || doc).querySelectorAll('a[href]').forEach((a) => { if (a.closest(ex)) return; const u = abs(a.getAttribute('href'), base);
+      if (u && rx.test(new URL(u).pathname) && !seen.has(idOf(u))) { seen.add(idOf(u)); out.push({ url: u, id: idOf(u), text: txt(a) }); } });
     return out;
   }
   function idOf(url) { const g = String(url).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i); if (g) return g[0].toLowerCase(); const m = url.match(/(\d+)(?:[^\d]*)$/); return m ? m[1] : url; }
@@ -115,9 +158,13 @@
     p.spousesUrl = section(relDoc, S.spouses, url, profile).concat(relDoc === doc ? [] : section(doc, S.spouses, url, profile)); p.childrenUrl = section(relDoc, S.children, url, profile).concat(relDoc === doc ? [] : section(doc, S.children, url, profile));
     p.parentsUrl = section(relDoc, S.parents, url, profile);
     p.fatherUrl = lineLinks(doc, S.father, url, profile).concat(section(doc, S.father, url, profile)).slice(0, 1); p.motherUrl = lineLinks(doc, S.mother, url, profile).concat(section(doc, S.mother, url, profile)).slice(0, 1);
-    p.relatives = relatives(relDoc, url, profile).concat(relDoc === doc ? [] : relatives(doc, url, profile));
+    p.family = familyTable(doc, url, profile); if (!p.family.length && relDoc !== doc) p.family = familyTable(relDoc, url, profile);
+    p.relatives = p.family.concat(relatives(relDoc, url, profile), relDoc === doc ? [] : relatives(doc, url, profile)).filter((x, i, a) => a.findIndex((y) => y.id === x.id && y.rel === x.rel) === i);
     const byRel = (r) => [...new Set(p.relatives.filter((x) => x.rel === r).map((x) => x.url))];
+    p.siblingsUrl = byRel('siblings');
+    if (byRel('father').length) p.fatherUrl = byRel('father').slice(0, 1); if (byRel('mother').length) p.motherUrl = byRel('mother').slice(0, 1);
     if (!p.fatherUrl.length) p.fatherUrl = byRel('father').slice(0, 1); if (!p.motherUrl.length) p.motherUrl = byRel('mother').slice(0, 1);
+    if (byRel('spouses').length) p.spousesUrl = byRel('spouses'); if (byRel('children').length) p.childrenUrl = byRel('children');
     if (!p.spousesUrl.length) p.spousesUrl = byRel('spouses'); if (!p.childrenUrl.length) p.childrenUrl = byRel('children');
     if (!p.parentsUrl.length) p.parentsUrl = p.fatherUrl.concat(p.motherUrl);
     p.hidden = new RegExp(profile.hidden, 'i').test(txt(doc.body));
@@ -128,6 +175,8 @@
       const u = abs(e.getAttribute('src') || e.getAttribute('href'), url);
       if (u && !/avatar|icon|logo|sprite|emoji|\/static\//i.test(u) && !seen.has(u)) { seen.add(u); p.media.push(u); }
     });
+    // скобки: у женщин — девичья фамилия, у мужчин — фамилия до смены
+    p.former = ''; if (p.maiden && p.sex === 'M') { p.former = p.maiden; p.maiden = ''; }
     p.notes = [];
     if (p.events) p.notes.push('События: ' + p.events);
     if (p.relativesText) p.notes.push('Родственники: ' + p.relativesText);
@@ -142,12 +191,15 @@
       const both = !fa.length && !mo.length ? (opt.maleOnly ? [] : p.parentsUrl || []) : [];
       fa.concat(mo, both).forEach((u) => out.push([u, 'up']));
       if (sec.spouses !== false) (p.spousesUrl || []).forEach((u) => out.push([u, 'side']));
+    } else if (dir === 'all') {   // вся родовая ветка: все связи
+      const add = (k, on) => { if (on !== false) (p[k] || []).forEach((u) => out.push([u, 'all'])); };
+      add('fatherUrl', sec.father); add('motherUrl', sec.mother); add('spousesUrl', sec.spouses); add('childrenUrl', sec.children); add('siblingsUrl', true);
     } else if (dir === 'down') {
       if (sec.children !== false && !(opt.maleOnly && p.sex === 'F')) (p.childrenUrl || []).forEach((u) => out.push([u, 'down']));
       if (sec.spouses !== false) (p.spousesUrl || []).forEach((u) => out.push([u, 'side']));
     }
     return out;
   }
-  const api = { parseName, relatives, expand, DEFAULT_PROFILE, person, personLinks, idOf, abs };
+  const api = { familyTable, accountPersons, parseName, relatives, expand, DEFAULT_PROFILE, person, personLinks, idOf, abs };
   root.Extract = api; if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -41,7 +41,7 @@
     return { names, by: yearOf(bd && bd.value) };
   }
   function personKey(p) { const g = norm([p.given, p.patronymic].filter(Boolean).join(' '));
-    return { names: [p.surname, p.maiden].filter(Boolean).map((x) => ({ given: g, sur: norm(x) })), by: yearOf(p.birthYear || p.birthDate) }; }
+    return { names: [p.surname, p.maiden, p.former].filter(Boolean).map((x) => ({ given: g, sur: norm(x) })), by: yearOf(p.birthYear || p.birthDate) }; }
   // совпадение по имени и по любой из фамилий (замужняя / девичья)
   function same(a, b) { return a.names.some((x) => b.names.some((y) => x.given === y.given && x.sur === y.sur)) && (!a.by || !b.by || a.by === b.by); }
 
@@ -52,6 +52,8 @@
     // «Иванова (Жегалова)»: основное имя — по девичьей фамилии (TYPE birth), второе — по фамилии в браке (TYPE married)
     const main = p.maiden || p.surname || '';
     n.push(node('NAME', `${name} /${main}/`, [p.given ? node('GIVN', name) : null, main ? node('SURN', main) : null, p.maiden ? node('TYPE', 'birth') : null].filter(Boolean)));
+    // у мужчин фамилия в скобках — фамилия до смены: второе имя (TYPE aka)
+    if (p.former) n.push(node('NAME', `${name} /${p.former}/`, [node('GIVN', name), node('SURN', p.former), node('TYPE', 'aka')]));
     if (p.maiden && p.surname) n.push(node('NAME', `${name} /${p.surname}/`, [node('GIVN', name), node('SURN', p.surname), node('TYPE', 'married')]));
     if (p.sex) n.push(node('SEX', p.sex));
     const ev = (tag, d, pl) => { if (d || pl) n.push(node(tag, '', [d ? node('DATE', d) : null, pl ? node('PLAC', pl) : null].filter(Boolean))); };

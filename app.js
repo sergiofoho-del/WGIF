@@ -3,6 +3,7 @@
   const q = new URLSearchParams(location.search); const mode = +q.get('mode') || 1;
   const NAMES = { 1: 'выбор аккаунта (раздел «Люди»)', 2: 'выбор персоны', 3: 'выбор Фамилии', 4: 'автосбор из файла ссылок' };
   $('modeName').textContent = '— ' + NAMES[mode];
+  if (mode === 1 || mode === 4) document.querySelector('input[name=scope][value=all]').checked = true;
   if (mode === 4) { $('m4').hidden = false; $('urlRow').hidden = true; }
   $('profile').value = JSON.stringify(Extract.DEFAULT_PROFILE, null, 1);
   let dirHandle = null, gedText = '', gedName = '', paused = false, stopped = false, running = false, wake = null;
@@ -36,6 +37,18 @@
   async function writeFile(dir, name, data) {
     const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(data); await w.close();
   }
+  // «Аккаунт персоны»: список «Люди, добавленные пользователем» разбит на страницы по 10 (…?tab=1&page-userPersons=N)
+  async function collectAccount(url, prof) {
+    const base = url.split('?')[0]; const out = new Map(); let n = 1; let empty = 0;
+    while (n <= 5000 && !stopped) {
+      await checkpoint(); const u = base + prof.accountListUrl + n; let doc;
+      try { doc = await getDoc(u); } catch (e) { log('✖ ' + u + ' — ' + e.message); break; }
+      const before = out.size; Extract.accountPersons(doc, u, prof).forEach((x) => { if (!out.has(x.id)) out.set(x.id, x.url); });
+      log(`аккаунт, страница ${n}: всего ${out.size}`);
+      if (out.size === before) { if (++empty >= 1) break; } n++; await sleep(+$('delay').value);
+    }
+    return [...out.values()];
+  }
   async function collectList(url, prof) {   // ссылки на людей со страницы списка, с пагинацией
     const out = new Set(); let u = url, pages = 0;
     while (u && pages++ < 500 && !stopped) {
@@ -59,6 +72,7 @@
       // 1. стартовые ссылки
       let seeds = []; const origin = $('startUrl').value ? new URL($('startUrl').value).origin : 'https://familio.org';
       if (mode === 2) seeds = [$('startUrl').value];
+      else if (mode === 1 && /\/users\//.test($('startUrl').value)) seeds = await collectAccount($('startUrl').value, prof);
       else if (mode === 1 || mode === 3) seeds = await collectList($('startUrl').value, prof);
       else {
         const f = $('linksFile').files[0]; if (!f) throw new Error('Выберите файл ссылок .html');
@@ -67,12 +81,13 @@
         log('Аккаунтов в файле: ' + accs.length);
         for (const a of accs) {
           const paths = []; if ($('secPeople').checked) paths.push(prof.peoplePath); if ($('secSurnames').checked) paths.push(prof.surnamesPath); if ($('secCustom').value) paths.push($('secCustom').value);
-          for (const p of paths) { if (stopped) break; (await collectList(a.replace(/\/$/, '') + p, prof)).forEach((l) => seeds.push(l)); }
+          if (/\/users\//.test(a) && $('secPeople').checked) (await collectAccount(a, prof)).forEach((l) => seeds.push(l));
+          for (const p of paths.filter((x) => !(/\/users\//.test(a) && x === prof.peoplePath))) { if (stopped) break; (await collectList(a.replace(/\/$/, '') + p, prof)).forEach((l) => seeds.push(l)); }
         }
       }
       // 2. обход карточек и связей
       const maxDepth = +$('depth').value || 0; const people = {}; const scope = document.querySelector('input[name=scope]:checked').value;
-      const startDir = scope === 'anc' ? 'up' : scope === 'desc' ? 'down' : 'self';
+      const startDir = scope === 'anc' ? 'up' : scope === 'desc' ? 'down' : scope === 'all' ? 'all' : 'self';
       const opt = { maleOnly: document.querySelector('input[name=sex]:checked').value === 'm',
         sec: { father: $('sFather').checked, mother: $('sMother').checked, spouses: $('sSpouses').checked, children: $('sChildren').checked } };
       const queue = seeds.map((u) => [u, startDir, 0]); const seen = new Set(seeds); let skipped = 0;
@@ -101,9 +116,11 @@
       const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: ${list.length} чел.`);
       // 3. сохранение
       if ($('outXlsx').checked && list.length) {
-        const rows = [['ID', 'Фамилия', 'Девичья фамилия', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
-        list.forEach((p) => rows.push([p.id, p.surname, p.maiden || '', p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
-        await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }])); log('Сохранён Familio_люди.xlsx');
+        const rows = [['ID', 'Фамилия', 'Девичья фамилия (у мужчин — до смены)', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
+        list.forEach((p) => rows.push([p.id, p.surname, p.maiden || p.former || '', p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
+        const fam = [['Персона (ID)', 'Персона', 'Статус', 'Родственник (ID)', 'Фамилия', 'Девичья/прежняя фамилия', 'Имя', 'Отчество', 'Дата рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Место жительства', 'Ссылка места рождения', 'Ссылка места смерти']];
+        list.forEach((p) => (p.family || []).forEach((f) => fam.push([p.id, `${p.surname} ${p.given} ${p.patronymic}`.trim(), f.status, f.id, f.surname, f.maiden, f.given, f.patronymic, f.birthDate, f.birthPlace, f.deathDate, f.deathPlace, f.residence, f.birthPlaceUrl, f.deathPlaceUrl])));
+        await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }].concat(fam.length > 1 ? [{ name: 'Семья', rows: fam }] : []))); log('Сохранён Familio_люди.xlsx');
       }
       if ($('outGed').checked && list.length) {
         const act = document.querySelector('input[name=act]:checked').value;
