@@ -36,20 +36,23 @@
   const norm = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
   const yearOf = (s) => { const m = String(s || '').match(/\b(\d{4})\b/); return m ? m[1] : ''; };
   function indiInfo(r) {
-    const nm = child(r, 'NAME'); const v = nm ? nm.value : '';
-    const mm = v.match(/^(.*?)\s*\/(.*?)\/?\s*$/);
-    const given = norm(mm ? mm[1] : v), sur = norm(mm ? mm[2] : '');
+    const names = r.kids.filter((k) => k.tag === 'NAME').map((nm) => { const mm = nm.value.match(/^(.*?)\s*\/(.*?)\/?\s*$/); return { given: norm(mm ? mm[1] : nm.value), sur: norm(mm ? mm[2] : '') }; });
     const b = child(r, 'BIRT'); const bd = b && child(b, 'DATE');
-    return { given, sur, by: yearOf(bd && bd.value) };
+    return { names, by: yearOf(bd && bd.value) };
   }
-  function personKey(p) { return { given: norm([p.given, p.patronymic].filter(Boolean).join(' ')), sur: norm(p.surname), by: yearOf(p.birthYear || p.birthDate) }; }
-  function same(a, b) { return a.sur === b.sur && a.given === b.given && (!a.by || !b.by || a.by === b.by); }
+  function personKey(p) { const g = norm([p.given, p.patronymic].filter(Boolean).join(' '));
+    return { names: [p.surname, p.maiden].filter(Boolean).map((x) => ({ given: g, sur: norm(x) })), by: yearOf(p.birthYear || p.birthDate) }; }
+  // совпадение по имени и по любой из фамилий (замужняя / девичья)
+  function same(a, b) { return a.names.some((x) => b.names.some((y) => x.given === y.given && x.sur === y.sur)) && (!a.by || !b.by || a.by === b.by); }
 
   // Факты персоны Familio -> узлы INDI
   function facts(p) {
     const n = [];
     const name = [p.given, p.patronymic].filter(Boolean).join(' ');
-    n.push(node('NAME', `${name} /${p.surname || ''}/`, [p.given ? node('GIVN', name) : null, p.surname ? node('SURN', p.surname) : null].filter(Boolean)));
+    // «Иванова (Жегалова)»: основное имя — по девичьей фамилии (TYPE birth), второе — по фамилии в браке (TYPE married)
+    const main = p.maiden || p.surname || '';
+    n.push(node('NAME', `${name} /${main}/`, [p.given ? node('GIVN', name) : null, main ? node('SURN', main) : null, p.maiden ? node('TYPE', 'birth') : null].filter(Boolean)));
+    if (p.maiden && p.surname) n.push(node('NAME', `${name} /${p.surname}/`, [node('GIVN', name), node('SURN', p.surname), node('TYPE', 'married')]));
     if (p.sex) n.push(node('SEX', p.sex));
     const ev = (tag, d, pl) => { if (d || pl) n.push(node(tag, '', [d ? node('DATE', d) : null, pl ? node('PLAC', pl) : null].filter(Boolean))); };
     ev('BIRT', p.birthDate || p.birthYear, p.birthPlace);
@@ -63,7 +66,11 @@
   // diff для подтверждения: что отличается у найденной персоны
   function diff(rec, p) {
     const out = [];
-    facts(p).filter((f) => SIMPLE.includes(f.tag)).forEach((f) => {
+    facts(p).filter((f, i, arr) => SIMPLE.includes(f.tag) && arr.findIndex((q) => q.tag === f.tag) === i).forEach((f) => {
+      if (f.tag === 'NAME') {   // имя совпало с любым из имён персоны (замужнее/девичье) — различия нет
+        const info = indiInfo(rec), mine = personKey(p);
+        if (info.names.length && mine.names.some((x) => info.names.some((y) => x.given === y.given && x.sur === y.sur))) return;
+      }
       const old = child(rec, f.tag);
       const val = (x) => x.tag === 'BIRT' || x.tag === 'DEAT' ? [child(x, 'DATE'), child(x, 'PLAC')].map((k) => k ? k.value : '').join(' ').trim() : x.value;
       if (!old) out.push({ tag: f.tag, old: '', neu: val(f) });
@@ -72,6 +79,15 @@
     return out;
   }
 
+  // добавляет недостающие имена (девичья / в браке), если такого NAME у персоны ещё нет
+  function addMissingNames(rec, p) {
+    const have = indiInfo(rec).names; let n = 0;
+    facts(p).filter((f) => f.tag === 'NAME').forEach((f) => {
+      const mm = f.value.match(/^(.*?)\s*\/(.*?)\/?\s*$/); const k = { given: norm(mm ? mm[1] : f.value), sur: norm(mm ? mm[2] : '') };
+      if (!have.some((y) => y.given === k.given && y.sur === k.sur)) { rec.kids.push(f); have.push(k); n++; }
+    });
+    return n;
+  }
   // mode: 'replace' | 'append' | 'confirm' | 'new'; confirm(info) -> 'replace'|'append'|'skip' (Promise)
   async function merge(gedText, people, opt) {
     opt = opt || {}; const mode = opt.mode || 'append'; const now = opt.now || new Date();
@@ -96,7 +112,8 @@
       if (mode === 'confirm') { const d = diff(found, p); act = d.length ? await opt.confirm({ xref: found.xref, person: p, diff: d }) : 'skip'; }
       if (act === 'skip') { stats.skipped++; continue; }
       const d = diff(found, p);
-      if (!d.length) { stats.skipped++; continue; }
+      const addedNames = addMissingNames(found, p);
+      if (!d.length) { if (addedNames) { stamp(found, now); stats.appended++; } else stats.skipped++; continue; }
       if (act === 'replace') {
         d.forEach((x) => { found.kids = found.kids.filter((k) => k.tag !== x.tag); });
         facts(p).filter((f) => d.some((x) => x.tag === f.tag)).forEach((f) => found.kids.push(f)); stats.replaced++;

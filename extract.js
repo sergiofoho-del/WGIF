@@ -26,6 +26,36 @@
   const txt = (e) => (e ? e.textContent.replace(/\s+/g, ' ').trim() : '');
   const abs = (h, base) => { try { return new URL(h, base).href.split('#')[0]; } catch (e) { return ''; } };
 
+  // «Старкина Анастасия Федоровна» = Фамилия Имя Отчество; «Иванова (Жегалова) Мария Федоровна» — в скобках девичья фамилия
+  function parseName(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim(); const r = { surname: '', maiden: '', given: '', patronymic: '' };
+    const m = t.match(/^(\S+)\s*\(([^)]+)\)\s*(.*)$/);
+    const rest = (m ? m[3] : t.replace(/^\S+\s*/, '')).split(' ').filter(Boolean);
+    r.surname = m ? m[1] : (t.split(' ')[0] || ''); if (m) r.maiden = m[2].trim();
+    r.given = rest[0] || ''; r.patronymic = rest.slice(1).join(' ');
+    return r;
+  }
+  const REL = [['father', /^Отец(?![а-яё])/i], ['mother', /^Мать(?![а-яё])/i], ['spouses', /^(Супруг|Жена|Муж)/i], ['children', /^(Дети|Сын|Дочь|Ребен)/i], ['siblings', /^(Брат|Сестра|Братья|Сестры)/i]];
+  // Все ссылки на людей в основной части страницы с названием связи (по ближайшей подписи) и разобранным именем
+  function relatives(doc, base, profile) {
+    const rx = new RegExp(profile.personUrl, 'i'); const out = []; const seen = new Set();
+    const label = (a) => {
+      for (let e = a, up = 0; e && e.parentElement && up < 6; e = e.parentElement, up++) {
+        for (let q = e.previousElementSibling, n = 0; q && n < 4; q = q.previousElementSibling, n++) {
+          const t = txt(q); if (t.length < 40) { const r = REL.find(([, x]) => x.test(t)); if (r) return r[0]; }
+        }
+        const own = txt(e.parentElement).slice(0, 40); const r = REL.find(([, x]) => x.test(own)); if (r && txt(e.parentElement).length < 400) return r[0];
+      }
+      return 'relative';
+    };
+    doc.querySelectorAll('a[href]').forEach((a) => {
+      if (a.closest('header, nav, footer')) return;
+      const u = abs(a.getAttribute('href'), base); if (!u || !rx.test(new URL(u).pathname) || idOf(u) === idOf(base)) return;
+      const key = idOf(u) + label(a); if (seen.has(key)) return; seen.add(key);
+      out.push(Object.assign({ url: u, id: idOf(u), rel: label(a), text: txt(a) }, parseName(txt(a))));
+    });
+    return out;
+  }
   function idOf(url) { const g = String(url).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i); if (g) return g[0].toLowerCase(); const m = url.match(/(\d+)(?:[^\d]*)$/); return m ? m[1] : url; }
 
   function personLinks(doc, base, profile, within) {
@@ -63,7 +93,7 @@
     return [];
   }
   function sectionText(doc, re) {
-    const rx = new RegExp('^(' + re + ')\\b', 'i');
+    const rx = new RegExp('^(' + re + ')(?![а-яё])', 'i');
     for (const h of doc.querySelectorAll('h1,h2,h3,h4,h5,dt,th,b,strong,legend,.section-title')) {
       if (rx.test(txt(h)) && txt(h).length < 40) { const box = h.nextElementSibling; if (box) return txt(box).slice(0, 5000); }
     }
@@ -74,10 +104,7 @@
     profile = Object.assign({}, DEFAULT_PROFILE, profile || {});
     const L = profile.labels, S = profile.sections;
     const h = txt(doc.querySelector('h1')) || txt(doc.querySelector('title'));
-    const words = h.replace(/\(.*?\)/g, '').split(/\s+/).filter(Boolean);
-    const p = { id: idOf(url), url, given: '', patronymic: '', surname: '' };
-    const map = { S: 'surname', G: 'given', P: 'patronymic' };
-    String(profile.nameOrder).split('').forEach((c, i) => { if (words[i]) p[map[c]] = words[i]; });
+    const p = Object.assign({ id: idOf(url), url }, parseName(h));
     const sm = [...doc.querySelectorAll('p, div, span')].map(txt).find((t) => /^(мужской|женский),\s*родил(ся|ась)/i.test(t));
     p.birthDate = labelValue(doc, L.birth);
     if (sm) { const m = sm.match(/^(мужской|женский),\s*родил(?:ся|ась)\s*(.*)$/i); if (m) { if (!p.birthDate) p.birthDate = m[2].replace(/\s*(умер|умерла).*$/i, '').trim(); p.sex0 = /^м/i.test(m[1]) ? 'M' : 'F'; } }
@@ -88,10 +115,14 @@
     p.spousesUrl = section(relDoc, S.spouses, url, profile).concat(relDoc === doc ? [] : section(doc, S.spouses, url, profile)); p.childrenUrl = section(relDoc, S.children, url, profile).concat(relDoc === doc ? [] : section(doc, S.children, url, profile));
     p.parentsUrl = section(relDoc, S.parents, url, profile);
     p.fatherUrl = lineLinks(doc, S.father, url, profile).concat(section(doc, S.father, url, profile)).slice(0, 1); p.motherUrl = lineLinks(doc, S.mother, url, profile).concat(section(doc, S.mother, url, profile)).slice(0, 1);
+    p.relatives = relatives(relDoc, url, profile).concat(relDoc === doc ? [] : relatives(doc, url, profile));
+    const byRel = (r) => [...new Set(p.relatives.filter((x) => x.rel === r).map((x) => x.url))];
+    if (!p.fatherUrl.length) p.fatherUrl = byRel('father').slice(0, 1); if (!p.motherUrl.length) p.motherUrl = byRel('mother').slice(0, 1);
+    if (!p.spousesUrl.length) p.spousesUrl = byRel('spouses'); if (!p.childrenUrl.length) p.childrenUrl = byRel('children');
     if (!p.parentsUrl.length) p.parentsUrl = p.fatherUrl.concat(p.motherUrl);
     p.hidden = new RegExp(profile.hidden, 'i').test(txt(doc.body));
     p.events = extra.ev ? [...evDoc.querySelectorAll('tr')].map((r) => [...r.children].map(txt).filter(Boolean).join(' / ')).filter(Boolean).join(' | ').slice(0, 5000) : sectionText(doc, S.events);
-    p.relativesText = extra.rel ? personLinks(relDoc, url, profile).map((u) => { const a = [...relDoc.querySelectorAll('a[href]')].find((x) => abs(x.getAttribute('href'), url) === u); return txt(a) + ' (' + idOf(u) + ')'; }).join('; ') : sectionText(doc, S.relatives); p.discussion = sectionText(doc, S.discussion);
+    p.relativesText = p.relatives.length ? p.relatives.map((x) => x.rel + ': ' + x.text).join('; ') : sectionText(doc, S.relatives); p.discussion = sectionText(doc, S.discussion);
     p.media = []; const seen = new Set();
     doc.querySelectorAll('img[src], a[href$=".jpg"], a[href$=".jpeg"], a[href$=".png"], video source[src], a[href$=".pdf"]').forEach((e) => {
       const u = abs(e.getAttribute('src') || e.getAttribute('href'), url);
@@ -117,6 +148,6 @@
     }
     return out;
   }
-  const api = { expand, DEFAULT_PROFILE, person, personLinks, idOf, abs };
+  const api = { parseName, relatives, expand, DEFAULT_PROFILE, person, personLinks, idOf, abs };
   root.Extract = api; if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

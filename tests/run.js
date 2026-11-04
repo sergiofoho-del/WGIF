@@ -15,6 +15,12 @@ const P = [
   let asked = 0; r = await G.merge(ged, P.slice(0, 1), { mode: 'confirm', now, confirm: async () => { asked++; return 'skip'; } });
   assert(asked === 1 && r.stats.skipped === 1 && !r.text.includes('Москва'));
   r = await G.merge('', P, { mode: 'new', now }); assert(r.stats.added === 3 && r.text.startsWith('0 HEAD'));
+    // девичья фамилия: существующая персона записана по мужу, найти по девичьей и добавить второе имя
+  const g2 = `0 HEAD\n0 @I1@ INDI\n1 NAME Мария Федоровна /Иванова/\n1 SEX F\n1 BIRT\n2 DATE 1900\n0 TRLR\n`;
+  r = await G.merge(g2, [{ id: 'z', given: 'Мария', patronymic: 'Федоровна', surname: 'Иванова', maiden: 'Жегалова', sex: 'F', birthYear: '1900' }], { mode: 'append', now });
+  assert(r.stats.added === 0 && r.text.includes('/Жегалова/') && r.text.includes('2 TYPE birth') && r.text.includes('3 TIME 05:51:07'), r.text);
+  r = await G.merge('', [{ id: 'z', given: 'Мария', patronymic: 'Федоровна', surname: 'Иванова', maiden: 'Жегалова', sex: 'F' }], { mode: 'new', now });
+  assert(r.text.includes('1 NAME Мария Федоровна /Жегалова/') && r.text.includes('1 NAME Мария Федоровна /Иванова/') && r.text.includes('2 TYPE married'));
   console.log('gedcom: OK');
 })().catch((e) => { console.error(e); process.exit(1); });
 require('../xlsx.js'); (async () => {
@@ -28,3 +34,7 @@ assert2.deepStrictEqual(E.expand(pp, 'up', { sec: {} }).map((x) => x[0]), ['f', 
 assert2.deepStrictEqual(E.expand({ ...pp, sex: 'F' }, 'down', { maleOnly: true, sec: {} }), [['s', 'side']]);
 assert2.deepStrictEqual(E.expand(pp, 'self', { sec: {} }), []);
 console.log('expand: OK');
+const pn = E.parseName('Иванова (Жегалова) Мария Федоровна');
+assert2.deepStrictEqual(pn, { surname: 'Иванова', maiden: 'Жегалова', given: 'Мария', patronymic: 'Федоровна' });
+assert2.deepStrictEqual(E.parseName('Старкина Анастасия Федоровна'), { surname: 'Старкина', maiden: '', given: 'Анастасия', patronymic: 'Федоровна' });
+console.log('names: OK');

@@ -101,8 +101,8 @@
       const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: ${list.length} чел.`);
       // 3. сохранение
       if ($('outXlsx').checked && list.length) {
-        const rows = [['ID', 'Фамилия', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
-        list.forEach((p) => rows.push([p.id, p.surname, p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
+        const rows = [['ID', 'Фамилия', 'Девичья фамилия', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
+        list.forEach((p) => rows.push([p.id, p.surname, p.maiden || '', p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
         await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }])); log('Сохранён Familio_люди.xlsx');
       }
       if ($('outGed').checked && list.length) {
