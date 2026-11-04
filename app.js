@@ -62,14 +62,29 @@
     return [...out];
   }
 
+  // Excel сохраняется во время сбора (каждые 10 персон) и в конце — результат не теряется при остановке или ошибке
+  async function saveExcel(root, list, quiet) {
+    if (!$('outXlsx').checked || !list.length) return false;
+    const rows = [['ID', 'Фамилия', 'Девичья фамилия (у мужчин — до смены)', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
+    list.forEach((p) => rows.push([p.id, p.surname, p.maiden || p.former || '', p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
+    const fam = [['Персона (ID)', 'Персона', 'Статус', 'Родственник (ID)', 'Фамилия', 'Девичья/прежняя фамилия', 'Имя', 'Отчество', 'Дата рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Место жительства', 'Ссылка места рождения', 'Ссылка места смерти']];
+    list.forEach((p) => (p.family || []).forEach((f) => fam.push([p.id, `${p.surname} ${p.given} ${p.patronymic}`.trim(), f.status, f.id, f.surname, f.maiden, f.given, f.patronymic, f.birthDate, f.birthPlace, f.deathDate, f.deathPlace, f.residence, f.birthPlaceUrl, f.deathPlaceUrl])));
+    await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }].concat(fam.length > 1 ? [{ name: 'Семья', rows: fam }] : [])));
+
+    if (!quiet) log('Сохранён Familio_люди.xlsx');
+    return true;
+  }
+
   async function run() {
     running = true; stopped = false; paused = false;
     log('🌳 ' + WGIF + ' Начинаем собирать семью — режим: ' + NAMES[mode] + '.');
     ['start'].forEach((i) => ($(i).disabled = true)); $('pause').disabled = $('stop').disabled = false;
+    const people = {}; let rootDir = null;
     try {
       const prof = profile(); chrome.storage.local.set({ profile: $('profile').value });
       if (!dirHandle) throw new Error('Выберите расположение рабочей папки');
       const root = await dirHandle.getDirectoryHandle(($('folderName').value || 'Welcome_Familio') + '_' + today(), { create: true });
+      rootDir = root;
       const mediaDir = await root.getDirectoryHandle('media', { create: true });
       // 1. стартовые ссылки
       let seeds = []; const origin = $('startUrl').value ? new URL($('startUrl').value).origin : 'https://familio.org';
@@ -88,7 +103,7 @@
         }
       }
       // 2. обход карточек и связей
-      const maxDepth = +$('depth').value || 0; const people = {}; const scope = document.querySelector('input[name=scope]:checked').value;
+      const maxDepth = +$('depth').value || 0; const scope = document.querySelector('input[name=scope]:checked').value;
       const startDir = scope === 'anc' ? 'up' : scope === 'desc' ? 'down' : scope === 'all' ? 'all' : 'self';
       const opt = { maleOnly: document.querySelector('input[name=sex]:checked').value === 'm',
         sec: { father: $('sFather').checked, mother: $('sMother').checked, spouses: $('sSpouses').checked, children: $('sChildren').checked } };
@@ -97,11 +112,13 @@
         await checkpoint(); if (stopped) break;
         const [u, dir, dp] = queue.shift(); let p;
         try { const main = await getDoc(u), ex = {};
-          if ($('sSpouses').checked || $('sChildren').checked || $('sFather').checked || $('sMother').checked || $('sRelatives').checked) ex.rel = await getDoc(u.split('?')[0] + prof.tabs.relatives);
-          if ($('sEvents').checked) ex.ev = await getDoc(u.split('?')[0] + prof.tabs.events);
+          if ($('sSpouses').checked || $('sChildren').checked || $('sFather').checked || $('sMother').checked || $('sRelatives').checked) ex.rel = await getDoc(u.split('?')[0] + prof.tabs.relatives).catch(() => null);
+          if ($('sEvents').checked) ex.ev = await getDoc(u.split('?')[0] + prof.tabs.events).catch(() => null);
           p = Extract.person(main, u, prof, ex); } catch (e) { log('✖ ' + u + ' — ' + e.message); continue; }
+        if (!p.surname) log('⚠ нет имени на странице ' + u + ' — возможно, вход на familio.org не выполнен или вёрстка изменилась');
         if (p.hidden && $('skipHidden').checked) { skipped++; log('⛔ скрытая персона пропущена: ' + u); await sleep(+$('delay').value); continue; }
-        people[p.id] = p; $('count').textContent = `собрано: ${Object.keys(people).length}, в очереди: ${queue.length}, скрытых пропущено: ${skipped}`;
+        people[p.id] = p; if (Object.keys(people).length % 10 === 0) await saveExcel(rootDir, Object.values(people), true).catch((e) => log('⚠ промежуточное сохранение: ' + e.message));
+        $('count').textContent = `собрано: ${Object.keys(people).length}, в очереди: ${queue.length}, скрытых пропущено: ${skipped}`;
         log(`✔ ${p.surname} ${p.given} ${p.patronymic} ${p.birthYear} [${dir}]`);
         p.spouses = opt.sec.spouses ? p.spousesUrl.map(Extract.idOf) : []; p.children = opt.sec.children ? p.childrenUrl.map(Extract.idOf) : [];
         p.parents = [].concat(opt.sec.father ? p.fatherUrl : [], opt.sec.mother ? p.motherUrl : []).map(Extract.idOf);
@@ -117,13 +134,7 @@
       Object.values(people).forEach((p) => (p.parents || []).forEach((pid) => { const par = people[pid]; if (par && !(par.children || []).includes(p.id)) (par.children = par.children || []).push(p.id); }));
       const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: привито к древу ${list.length} чел.`);
       // 3. сохранение
-      if ($('outXlsx').checked && list.length) {
-        const rows = [['ID', 'Фамилия', 'Девичья фамилия (у мужчин — до смены)', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
-        list.forEach((p) => rows.push([p.id, p.surname, p.maiden || p.former || '', p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
-        const fam = [['Персона (ID)', 'Персона', 'Статус', 'Родственник (ID)', 'Фамилия', 'Девичья/прежняя фамилия', 'Имя', 'Отчество', 'Дата рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Место жительства', 'Ссылка места рождения', 'Ссылка места смерти']];
-        list.forEach((p) => (p.family || []).forEach((f) => fam.push([p.id, `${p.surname} ${p.given} ${p.patronymic}`.trim(), f.status, f.id, f.surname, f.maiden, f.given, f.patronymic, f.birthDate, f.birthPlace, f.deathDate, f.deathPlace, f.residence, f.birthPlaceUrl, f.deathPlaceUrl])));
-        await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }].concat(fam.length > 1 ? [{ name: 'Семья', rows: fam }] : []))); log('Сохранён Familio_люди.xlsx');
-      }
+      if (await saveExcel(root, list)) { /* сохранено */ } else if (!list.length) log('⚠ Не собрано ни одной персоны — файл Excel не создан. Проверьте вход на familio.org, ссылку начала сбора и «Настройки сайта».');
       if ($('outGed').checked && list.length) {
         const act = document.querySelector('input[name=act]:checked').value;
         if (act !== 'new' && !gedText) throw new Error('Укажите файл GEDCOM');
@@ -133,7 +144,7 @@
         await writeFile(root, out, res.text); log(`Сохранён ${out}: ${JSON.stringify(res.stats)}`);
       }
       log('🌳 Готово. Папка: ' + root.name + '\n   ' + (stopped ? 'Сбор остановлен — продолжить можно в любой момент: ни одна ветвь не потеряна.' : 'Ни одна ветвь не потеряна навсегда: связаны кровью, объединены историей, привиты обратно домой.'));
-    } catch (e) { log('✖ ' + e.message); }
+    } catch (e) { log('✖ ' + e.message); if (rootDir && Object.keys(people).length) { try { await saveExcel(rootDir, Object.values(people)); log('Собранное до ошибки сохранено в Excel.'); } catch (e2) { log('✖ Excel: ' + e2.message); } } }
     running = false; $('start').disabled = false; $('pause').disabled = $('stop').disabled = true;
   }
   function askConfirm(info) {

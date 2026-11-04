@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Welcome, Grafted Into the Fam",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "WGIF — Welcome, Grafted Into the Fam! Сбор людей и семейных связей с familio.org в Excel и GEDCOM. Ни одна ветвь не потеряна навсегда.",
   "minimum_chrome_version": "120",
   "action": {
