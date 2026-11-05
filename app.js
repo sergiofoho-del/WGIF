@@ -1,158 +1,109 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const q = new URLSearchParams(location.search); const mode = +q.get('mode') || 1;
-  const NAMES = { 1: 'выбор аккаунта (раздел «Люди»)', 2: 'выбор персоны', 3: 'выбор Фамилии', 4: 'автосбор из файла ссылок' };
-  $('modeName').textContent = '— ' + NAMES[mode];
-  if (mode === 1 || mode === 4) document.querySelector('input[name=scope][value=all]').checked = true;
-  if (mode === 4) { $('m4').hidden = false; $('urlRow').hidden = true; }
-  $('profile').value = JSON.stringify(Extract.DEFAULT_PROFILE, null, 1);
-  let dirHandle = null, gedText = '', gedName = '', paused = false, stopped = false, running = false, wake = null;
-  const WGIF = 'WGIF · Welcome, Grafted Into the Fam!';
+  const q = new URLSearchParams(location.search); const srcTab = +q.get('src') || 0;
+  let sectors = {}, dirHandle = null, paused = false, stopped = false, wake = null;
   const log = (s) => { const l = $('log'); l.textContent += s + '\n'; l.scrollTop = l.scrollHeight; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const today = () => new Date().toISOString().slice(0, 10);
-  const profile = () => Object.assign({}, Extract.DEFAULT_PROFILE, JSON.parse($('profile').value || '{}'));
+  const prof = Extract.DEFAULT_PROFILE;
 
-  chrome.storage.local.get('profile', (d) => { if (d.profile) $('profile').value = d.profile; });
-  (async () => {   // подставить адрес вкладки familio.org и проверить вход
-    const tabId = +q.get('src'); let url = '';
-    if (tabId) { try { url = (await chrome.tabs.get(tabId)).url; } catch (e) {} }
-    $('startUrl').value = url;
-    try {
-      const r = await fetch(url || 'https://familio.org/', { credentials: 'include' });
-      const t = await r.text(); const ok = r.ok && !/type=["']password["']/i.test(t) || /выйти|logout/i.test(t);
-      $('auth').textContent = ok ? '✔ Вход выполнен (страница доступна)' : '✖ Похоже, вы не вошли: войдите на familio.org и запустите заново';
-    } catch (e) { $('auth').textContent = '✖ Нет доступа к familio.org: ' + e.message; }
+  // ---- сектора ----
+  const store = () => chrome.storage.local.set({ wgifSectors: sectors });
+  function drawSectors() {
+    $('sectors').innerHTML = '';
+    Sectors.ROLES.forEach((r) => {
+      const s = sectors[r.id]; const tr = document.createElement('tr');
+      const st = !s ? '<span class="bad">✖ не указан</span>' : `<span class="${s.verified ? 'ok' : 'warn'}">${s.verified ? '✔' : '⚠'} ${s.verified ? 'указан' : 'указан, но не подтверждён в исходной странице'}</span><br>«${(s.text || '').slice(0, 70).replace(/</g, '&lt;')}»${r.tab ? ' · вкладка ' + s.tab : ''}`;
+      tr.innerHTML = `<td><b>${r.title}</b><br><small>${r.hint}</small></td><td class="st">${st}</td><td><button data-r="${r.id}">Указать</button></td>`;
+      $('sectors').append(tr);
+    });
+    $('sectors').querySelectorAll('button').forEach((b) => (b.onclick = () => pick(b.dataset.r)));
+  }
+  async function pick(role) {
+    if (!srcTab) { log('✖ Не найдена вкладка familio.org — откройте окно расширения из значка на странице персоны.'); return; }
+    const r = Sectors.ROLES.find((x) => x.id === role);
+    try { await chrome.tabs.update(srcTab, { active: true }); await chrome.scripting.executeScript({ target: { tabId: srcTab }, func: Sectors.pickerInPage, args: [role, r.title] }); }
+    catch (e) { log('✖ Не удалось запустить выбор на вкладке: ' + e.message); }
+  }
+  chrome.runtime.onMessage.addListener(async (msg) => {
+    if (!msg || msg.type !== 'wgif-picked' || !msg.spec) return;
+    const s = msg.spec; try { const t = await chrome.tabs.getCurrent(); if (t) await chrome.tabs.update(t.id, { active: true }); } catch (e) {}
+    if (s.cancelled) { log('Указание сектора отменено.'); return; }
+    sectors[s.role] = s; store(); drawSectors();
+    log(`Сектор «${Sectors.ROLES.find((x) => x.id === s.role).title}» ${s.verified ? 'указан и подтверждён.' : '⚠ указан, но не найден в исходной странице: попробуйте указать другой сектор (чуть крупнее или мельче).'}`);
+  });
+  chrome.storage.local.get('wgifSectors', (d) => { sectors = d.wgifSectors || {}; drawSectors(); });
+  $('reset').onclick = () => { sectors = {}; store(); drawSectors(); $('prev').hidden = true; };
+
+  // ---- загрузка страниц ----
+  async function getDoc(u) { const r = await fetch(u, { credentials: 'include' }); if (!r.ok) throw new Error('HTTP ' + r.status); return new DOMParser().parseFromString(await r.text(), 'text/html'); }
+  const tabsNeeded = () => [...new Set(Sectors.ROLES.map((r) => (sectors[r.id] && sectors[r.id].tab) || '0'))];
+  async function loadPerson(url) {
+    const base = url.split('?')[0]; const docs = {};
+    for (const t of tabsNeeded()) docs[t] = await getDoc(base + '?tab=' + t);
+    if (!docs['0']) docs['0'] = await getDoc(base);
+    return Sectors.extractPerson(docs, base, sectors, prof);
+  }
+  const missing = () => Sectors.ROLES.filter((r) => !sectors[r.id]).map((r) => r.title);
+
+  (async () => {   // вход + адрес вкладки
+    let url = ''; if (srcTab) { try { url = (await chrome.tabs.get(srcTab)).url; } catch (e) {} } $('startUrl').value = url;
+    try { const r = await fetch(url || 'https://familio.org/', { credentials: 'include' }); const t = await r.text();
+      $('auth').innerHTML = r.ok && /выйти|logout|my-persons/i.test(t) ? '<span class="ok">✔ Вход выполнен</span>' : '<span class="bad">✖ Похоже, вход не выполнен: войдите на familio.org и откройте расширение заново</span>'; }
+    catch (e) { $('auth').innerHTML = '<span class="bad">✖ Нет доступа к familio.org: ' + e.message + '</span>'; }
   })();
 
+  $('check').onclick = async () => {
+    $('prev').hidden = false; $('prev').textContent = 'Проверяю…';
+    try {
+      const m = missing(); let url = $('startUrl').value; if (srcTab) { try { url = (await chrome.tabs.get(srcTab)).url; } catch (e) {} }
+      if (!/\/persons\//.test(url)) throw new Error('Откройте на сайте страницу персоны (/persons/…)');
+      const p = await loadPerson(url);
+      $('prev').textContent = (m.length ? '⚠ Не указаны сектора: ' + m.join('; ') + '\n\n' : '') +
+        `Имя: ${p.surname}${p.maiden ? ' (' + p.maiden + ')' : ''}${p.former ? ' (до смены: ' + p.former + ')' : ''} ${p.given} ${p.patronymic}\nПол: ${p.sex || '?'}  Родился: ${p.birthDate || '—'}  Умер: ${p.deathDate || '—'}  Фото: ${p.photo ? 'есть' : 'нет'}  Скрытая: ${p.hidden ? 'да' : 'нет'}\n` +
+        `\nРодственников: ${p.family.length}\n` + p.family.map((f) => `  ${f.status || '?'} [${f.rel}] — ${f.text} · ${f.birthDate || ''} ${f.birthPlace || ''}`).join('\n') +
+        `\n\nСобытий: ${p.events.length}\n` + p.events.map((e) => '  ' + e).join('\n') + (p.warn.length ? '\n\n⚠ ' + p.warn.join('\n⚠ ') : '');
+    } catch (e) { $('prev').textContent = '✖ ' + e.message; }
+  };
+
+  // ---- сбор ----
   $('pickDir').onclick = async () => { try { dirHandle = await showDirectoryPicker({ mode: 'readwrite' }); $('dirName').textContent = dirHandle.name; } catch (e) {} };
-  $('gedFile').onchange = async (e) => { const f = e.target.files[0]; if (f) { gedText = await f.text(); gedName = f.name; $('outGed').checked = true; } };
   $('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Продолжить' : 'Пауза'; if (!paused && wake) wake(); log(paused ? '⏸ Пауза' : '▶ Продолжение'); };
   $('stop').onclick = () => { stopped = true; if (wake) wake(); };
   const checkpoint = async () => { while (paused && !stopped) await new Promise((r) => (wake = r)); };
-
-  async function getDoc(url) {
-    const r = await fetch(url, { credentials: 'include' }); if (!r.ok) throw new Error('HTTP ' + r.status);
-    return new DOMParser().parseFromString(await r.text(), 'text/html');
-  }
-  async function writeFile(dir, name, data) {
-    const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(data); await w.close();
-  }
-  // «Аккаунт персоны»: список «Люди, добавленные пользователем» разбит на страницы по 10 (…?tab=1&page-userPersons=N)
-  async function collectAccount(url, prof) {
-    const base = url.split('?')[0]; const out = new Map(); let n = 1; let empty = 0;
-    while (n <= 5000 && !stopped) {
-      await checkpoint(); const u = base + prof.accountListUrl + n; let doc;
-      try { doc = await getDoc(u); } catch (e) { log('✖ ' + u + ' — ' + e.message); break; }
-      const before = out.size; Extract.accountPersons(doc, u, prof).forEach((x) => { if (!out.has(x.id)) out.set(x.id, x.url); });
-      log(`аккаунт, страница ${n}: всего ${out.size}`);
-      if (out.size === before) { if (++empty >= 1) break; } n++; await sleep(+$('delay').value);
-    }
-    return [...out.values()];
-  }
-  async function collectList(url, prof) {   // ссылки на людей со страницы списка, с пагинацией
-    const out = new Set(); let u = url, pages = 0;
-    while (u && pages++ < 500 && !stopped) {
-      await checkpoint(); let doc; try { doc = await getDoc(u); } catch (e) { log('✖ ' + u + ' — ' + e.message); break; }
-      const before = out.size; Extract.personLinks(doc, u, prof).forEach((l) => out.add(l));
-      log(`список ${u}: всего ${out.size}`);
-      const n = doc.querySelector(prof.next); const nu = n ? Extract.abs(n.getAttribute('href'), u) : '';
-      u = nu && nu !== u && out.size > before ? nu : ''; await sleep(+$('delay').value);
-    }
-    return [...out];
-  }
-
-  // Excel сохраняется во время сбора (каждые 10 персон) и в конце — результат не теряется при остановке или ошибке
-  async function saveExcel(root, list, quiet) {
-    if (!$('outXlsx').checked || !list.length) return false;
-    const rows = [['ID', 'Фамилия', 'Девичья фамилия (у мужчин — до смены)', 'Имя', 'Отчество', 'Пол', 'Дата рождения', 'Год рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Супруги (ID)', 'Дети (ID)', 'Родители (ID)', 'События', 'Родственники', 'Обсуждение', 'Файлы медиа', 'Ссылка']];
-    list.forEach((p) => rows.push([p.id, p.surname, p.maiden || p.former || '', p.given, p.patronymic, p.sex, p.birthDate, p.birthYear ? +p.birthYear : '', p.birthPlace, p.deathDate, p.deathPlace, (p.spouses || []).join(', '), (p.children || []).join(', '), (p.parents || []).join(', '), $('sEvents').checked ? p.events : '', $('sRelatives').checked ? p.relativesText : '', $('sDiscussion').checked ? p.discussion : '', (p.mediaFiles || []).join(', '), p.url]));
-    const fam = [['Персона (ID)', 'Персона', 'Статус', 'Родственник (ID)', 'Фамилия', 'Девичья/прежняя фамилия', 'Имя', 'Отчество', 'Дата рождения', 'Место рождения', 'Дата смерти', 'Место смерти', 'Место жительства', 'Ссылка места рождения', 'Ссылка места смерти']];
-    list.forEach((p) => (p.family || []).forEach((f) => fam.push([p.id, `${p.surname} ${p.given} ${p.patronymic}`.trim(), f.status, f.id, f.surname, f.maiden, f.given, f.patronymic, f.birthDate, f.birthPlace, f.deathDate, f.deathPlace, f.residence, f.birthPlaceUrl, f.deathPlaceUrl])));
-    await writeFile(root, 'Familio_люди.xlsx', Xlsx.build([{ name: 'Люди', rows }].concat(fam.length > 1 ? [{ name: 'Семья', rows: fam }] : [])));
-
-    if (!quiet) log('Сохранён Familio_люди.xlsx');
+  async function writeFile(dir, name, data) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(data); await w.close(); }
+  async function save(root, results, quiet) {
+    if (!results.length) return false; const res = Family.build(results);
+    await writeFile(root, 'WGIF_семьи.xlsx', Xlsx.build(Family.sheets(res)));
+    if ($('outGed').checked) { const g = await Gedcom.merge('', res.people, { mode: 'new' }); await writeFile(root, 'WGIF_древо.ged', g.text); }
+    if (!quiet) log(`Сохранено: WGIF_семьи.xlsx${$('outGed').checked ? ', WGIF_древо.ged' : ''} (людей ${res.people.length}, карточек ${res.cards.length})`);
     return true;
   }
-
   async function run() {
-    running = true; stopped = false; paused = false;
-    log('🌳 ' + WGIF + ' Начинаем собирать семью — режим: ' + NAMES[mode] + '.');
-    ['start'].forEach((i) => ($(i).disabled = true)); $('pause').disabled = $('stop').disabled = false;
-    const people = {}; let rootDir = null;
+    const m = missing(); if (m.length) { log('✖ Сначала укажите все сектора. Не указаны:\n  • ' + m.join('\n  • ')); return; }
+    if (!dirHandle) { log('✖ Выберите расположение рабочей папки.'); return; }
+    const start = $('startUrl').value; if (!/\/persons\//.test(start)) { log('✖ Укажите ссылку на страницу персоны (/persons/…).'); return; }
+    stopped = false; paused = false; $('start').disabled = true; $('pause').disabled = $('stop').disabled = false;
+    log('🌳 WGIF · Welcome, Grafted Into the Fam! Начинаем: страница персоны.');
+    const results = []; let root = null;
     try {
-      const prof = profile(); chrome.storage.local.set({ profile: $('profile').value });
-      if (!dirHandle) throw new Error('Выберите расположение рабочей папки');
-      const root = await dirHandle.getDirectoryHandle(($('folderName').value || 'Welcome_Familio') + '_' + today(), { create: true });
-      rootDir = root;
-      const mediaDir = await root.getDirectoryHandle('media', { create: true });
-      // 1. стартовые ссылки
-      let seeds = []; const origin = $('startUrl').value ? new URL($('startUrl').value).origin : 'https://familio.org';
-      if (mode === 2) seeds = [$('startUrl').value];
-      else if (mode === 1 && /\/users\//.test($('startUrl').value)) seeds = await collectAccount($('startUrl').value, prof);
-      else if (mode === 1 || mode === 3) seeds = await collectList($('startUrl').value, prof);
-      else {
-        const f = $('linksFile').files[0]; if (!f) throw new Error('Выберите файл ссылок .html');
-        const d = new DOMParser().parseFromString(await f.text(), 'text/html');
-        const accs = [...new Set([...d.querySelectorAll('a[href]')].map((a) => a.href).filter((h) => /familio\.org/.test(h)))];
-        log('Аккаунтов в файле: ' + accs.length);
-        for (const a of accs) {
-          const paths = []; if ($('secPeople').checked) paths.push(prof.peoplePath); if ($('secSurnames').checked) paths.push(prof.surnamesPath); if ($('secCustom').value) paths.push($('secCustom').value);
-          if (/\/users\//.test(a) && $('secPeople').checked) (await collectAccount(a, prof)).forEach((l) => seeds.push(l));
-          for (const p of paths.filter((x) => !(/\/users\//.test(a) && x === prof.peoplePath))) { if (stopped) break; (await collectList(a.replace(/\/$/, '') + p, prof)).forEach((l) => seeds.push(l)); }
-        }
-      }
-      // 2. обход карточек и связей
-      const maxDepth = +$('depth').value || 0; const scope = document.querySelector('input[name=scope]:checked').value;
-      const startDir = scope === 'anc' ? 'up' : scope === 'desc' ? 'down' : scope === 'all' ? 'all' : 'self';
-      const opt = { maleOnly: document.querySelector('input[name=sex]:checked').value === 'm',
-        sec: { father: $('sFather').checked, mother: $('sMother').checked, spouses: $('sSpouses').checked, children: $('sChildren').checked } };
-      const queue = seeds.map((u) => [u, startDir, 0]); const seen = new Set(seeds); let skipped = 0;
+      root = await dirHandle.getDirectoryHandle(($('folderName').value || 'WGIF') + '_' + today(), { create: true });
+      const maxDepth = $('follow').checked ? Math.max(1, +$('depth').value || 1) : 0; const queue = [[start.split('?')[0], 0]]; const seen = new Set([Extract.idOf(start)]);
       while (queue.length && !stopped) {
-        await checkpoint(); if (stopped) break;
-        const [u, dir, dp] = queue.shift(); let p;
-        try { const main = await getDoc(u), ex = {};
-          if ($('sSpouses').checked || $('sChildren').checked || $('sFather').checked || $('sMother').checked || $('sRelatives').checked) ex.rel = await getDoc(u.split('?')[0] + prof.tabs.relatives).catch(() => null);
-          if ($('sEvents').checked) ex.ev = await getDoc(u.split('?')[0] + prof.tabs.events).catch(() => null);
-          p = Extract.person(main, u, prof, ex); } catch (e) { log('✖ ' + u + ' — ' + e.message); continue; }
-        if (!p.surname) log('⚠ нет имени на странице ' + u + ' — возможно, вход на familio.org не выполнен или вёрстка изменилась');
-        if (p.hidden && $('skipHidden').checked) { skipped++; log('⛔ скрытая персона пропущена: ' + u); await sleep(+$('delay').value); continue; }
-        people[p.id] = p; if (Object.keys(people).length % 10 === 0) await saveExcel(rootDir, Object.values(people), true).catch((e) => log('⚠ промежуточное сохранение: ' + e.message));
-        $('count').textContent = `собрано: ${Object.keys(people).length}, в очереди: ${queue.length}, скрытых пропущено: ${skipped}`;
-        log(`✔ ${p.surname} ${p.given} ${p.patronymic} ${p.birthYear} [${dir}]`);
-        p.spouses = opt.sec.spouses ? p.spousesUrl.map(Extract.idOf) : []; p.children = opt.sec.children ? p.childrenUrl.map(Extract.idOf) : [];
-        p.parents = [].concat(opt.sec.father ? p.fatherUrl : [], opt.sec.mother ? p.motherUrl : []).map(Extract.idOf);
-        if (!p.parents.length && (opt.sec.father || opt.sec.mother)) p.parents = p.parentsUrl.map(Extract.idOf);
-        if (!maxDepth || dp < maxDepth) Extract.expand(p, dir, opt).forEach(([l, d]) => { if (!seen.has(l)) { seen.add(l); queue.push([l, d, dp + 1]); } });
-        if ($('saveMedia').checked) for (let i = 0; i < p.media.length && !stopped; i++) {
-          try { const r = await fetch(p.media[i], { credentials: 'include' }); if (!r.ok) continue; const ext = (p.media[i].split('?')[0].match(/\.\w{2,4}$/) || ['.jpg'])[0];
-            const name = `${p.id}_${p.surname}_${i + 1}${ext}`.replace(/[\\/:*?"<>|]/g, '_'); await writeFile(mediaDir, name, await r.blob()); (p.mediaFiles = p.mediaFiles || []).push(name); } catch (e) {}
-        }
+        await checkpoint(); if (stopped) break; const [u, dp] = queue.shift(); let p;
+        try { p = await loadPerson(u); } catch (e) { log('✖ ' + u + ' — ' + e.message); continue; }
+        if (p.warn.length) log('⚠ ' + (p.surname || u) + ': ' + p.warn.join('; '));
+        if (p.hidden) { log('⛔ скрытая персона пропущена: ' + u); await sleep(+$('delay').value); continue; }
+        results.push(p); $('count').textContent = `собрано: ${results.length}, в очереди: ${queue.length}`;
+        log(`✔ ${p.surname} ${p.given} ${p.patronymic} — родственников: ${p.family.length}, событий: ${p.events.length}`);
+        if (maxDepth && dp < maxDepth) p.family.forEach((f) => { if (!seen.has(f.id)) { seen.add(f.id); queue.push([f.url.split('?')[0], dp + 1]); } });
+        if (results.length % 10 === 0) await save(root, results, true).catch((e) => log('⚠ промежуточное сохранение: ' + e.message));
         await sleep(+$('delay').value);
       }
-      // children/parents взаимно: родитель→дети достаточно для GEDCOM
-      Object.values(people).forEach((p) => (p.parents || []).forEach((pid) => { const par = people[pid]; if (par && !(par.children || []).includes(p.id)) (par.children = par.children || []).push(p.id); }));
-      const list = Object.values(people); log(`Сбор ${stopped ? 'остановлен' : 'завершён'}: привито к древу ${list.length} чел.`);
-      // 3. сохранение
-      if (await saveExcel(root, list)) { /* сохранено */ } else if (!list.length) log('⚠ Не собрано ни одной персоны — файл Excel не создан. Проверьте вход на familio.org, ссылку начала сбора и «Настройки сайта».');
-      if ($('outGed').checked && list.length) {
-        const act = document.querySelector('input[name=act]:checked').value;
-        if (act !== 'new' && !gedText) throw new Error('Укажите файл GEDCOM');
-        if (gedText) await writeFile(root, 'ОРИГИНАЛ_' + gedName, gedText);
-        const res = await Gedcom.merge(act === 'new' ? '' : gedText, list, { mode: act, confirm: askConfirm });
-        const out = act === 'new' ? 'Familio_новый.ged' : gedName.replace(/\.ged$/i, '') + '_обновлён.ged';
-        await writeFile(root, out, res.text); log(`Сохранён ${out}: ${JSON.stringify(res.stats)}`);
-      }
-      log('🌳 Готово. Папка: ' + root.name + '\n   ' + (stopped ? 'Сбор остановлен — продолжить можно в любой момент: ни одна ветвь не потеряна.' : 'Ни одна ветвь не потеряна навсегда: связаны кровью, объединены историей, привиты обратно домой.'));
-    } catch (e) { log('✖ ' + e.message); if (rootDir && Object.keys(people).length) { try { await saveExcel(rootDir, Object.values(people)); log('Собранное до ошибки сохранено в Excel.'); } catch (e2) { log('✖ Excel: ' + e2.message); } } }
-    running = false; $('start').disabled = false; $('pause').disabled = $('stop').disabled = true;
-  }
-  function askConfirm(info) {
-    return new Promise((res) => {
-      $('confirmText').textContent = `${info.person.surname} ${info.person.given} (${info.xref})\n` + info.diff.map((d) => `${d.tag}: «${d.old}» → «${d.neu}»`).join('\n');
-      $('confirmBox').hidden = false;
-      $('confirmBox').querySelectorAll('button').forEach((b) => (b.onclick = () => { $('confirmBox').hidden = true; res(b.dataset.a); }));
-    });
+      if (!(await save(root, results))) log('⚠ Не собрано ни одной персоны — файл не создан. Проверьте сектора кнопкой «Проверить разбор».');
+      log(stopped ? '🌳 Сбор остановлен. Данные сохранены.' : '🌳 Готово. Папка: ' + root.name + '\n   Ни одна ветвь не потеряна навсегда: связаны кровью, объединены историей, привиты обратно домой.');
+    } catch (e) { log('✖ ' + e.message); if (root && results.length) { try { await save(root, results); log('Собранное до ошибки сохранено.'); } catch (e2) { log('✖ ' + e2.message); } } }
+    $('start').disabled = false; $('pause').disabled = $('stop').disabled = true; $('pause').textContent = 'Пауза';
   }
   $('start').onclick = run;
 })();

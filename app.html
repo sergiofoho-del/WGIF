@@ -1,55 +1,31 @@
-<!doctype html><html lang="ru"><meta charset="utf-8"><title>WGIF — Welcome, Grafted Into the Fam</title>
+<!doctype html><html lang="ru"><meta charset="utf-8"><title>WGIF — Страница персоны (тест 0.7.0)</title>
 <style>
-body{font:14px system-ui;margin:0;background:#fafaf7;color:#222}main{max-width:860px;margin:auto;padding:16px}
+body{font:14px system-ui;margin:0;background:#fafaf7;color:#222}main{max-width:900px;margin:auto;padding:16px}
 fieldset{border:1px solid #cfc9b5;border-radius:8px;margin:10px 0;background:#fff}legend{font-weight:600}
-label{display:block;margin:5px 0}button{padding:7px 14px;border:1px solid #9d9577;border-radius:6px;background:#fff;cursor:pointer;font:inherit}
-button.go{background:#2f6b3a;color:#fff;border-color:#2f6b3a}button:disabled{opacity:.45}
-#log{height:240px;overflow:auto;background:#111;color:#cfe;font:12px monospace;padding:8px;white-space:pre-wrap;border-radius:6px}
-textarea{width:100%;height:110px;font:12px monospace}input[type=text],input[type=number]{padding:4px;width:260px}small{color:#666}
+label{display:block;margin:5px 0}button{padding:6px 12px;border:1px solid #9d9577;border-radius:6px;background:#fff;cursor:pointer;font:inherit}
+button.go{background:#2f6b3a;color:#fff;border-color:#2f6b3a;padding:8px 18px}button:disabled{opacity:.45}
+#log{height:220px;overflow:auto;background:#111;color:#cfe;font:12px monospace;padding:8px;white-space:pre-wrap;border-radius:6px}
+table{border-collapse:collapse;width:100%}td{padding:5px 6px;border-bottom:1px solid #eee;vertical-align:top}td.st{width:48%;font-size:12px;color:#555}
+.ok{color:#2f6b3a}.bad{color:#a33}.warn{color:#b86b00}input[type=text],input[type=number]{padding:4px}small{color:#666}
+pre#prev{background:#f3f1e8;padding:8px;border-radius:6px;max-height:260px;overflow:auto;font-size:12px;white-space:pre-wrap}
 </style><main>
-<h2><img src="icons/icon48.png" width="28" style="vertical-align:middle"> 🌳 WGIF <small id="modeName"></small></h2>
-<p style="margin:-6px 0 10px"><b>Welcome, Grafted Into the Fam!</b> <i>Добро пожаловать, привитые к нашей семье!</i><br><small>Welcome — Добро пожаловать · Grafted — Привитые (как родная ветвь к древу) · Into the — В состав · Fam — Нашей семьи</small></p>
-<fieldset><legend>1. Вход на сайт</legend><div id="auth">Проверка…</div></fieldset>
-<fieldset id="srcBox"><legend>2. Источник</legend>
- <label id="urlRow">Ссылка начала сбора (аккаунт: …/users/&lt;id&gt;; персона: …/persons/&lt;id&gt;): <input type="text" id="startUrl" style="width:520px"></label>
- <div id="m4" hidden><label>Файл ссылок .html: <input type="file" id="linksFile" accept=".html,.htm"></label>
- Из каких разделов каждого аккаунта собирать:
- <label><input type="checkbox" id="secPeople" checked> «Люди»</label><label><input type="checkbox" id="secSurnames"> «Фамилии»</label>
- <label>Свой раздел (путь, например /tree): <input type="text" id="secCustom"></label></div>
- <div>Собирать разделы карточки:
- <label><input type="checkbox" id="sFather" checked> Отец</label><label><input type="checkbox" id="sMother" checked> Мать</label>
- <label><input type="checkbox" id="sSpouses" checked> Супруги</label><label><input type="checkbox" id="sChildren" checked> Дети</label>
- <label><input type="checkbox" id="sEvents" checked> События</label><label><input type="checkbox" id="sRelatives"> Родственники</label>
- <label><input type="checkbox" id="sDiscussion"> Обсуждение</label></div>
- <div>Охват сбора:
- <label><input type="radio" name="scope" value="all"> 0. Вся родовая ветка — переходить по всем связям (отец, мать, супруги, дети, братья и сёстры)</label>
- <label><input type="radio" name="scope" value="self" checked> 1. Данные только текущей персоны</label>
- <label><input type="radio" name="scope" value="anc"> 2. Все предки — родители и их семейные связи</label>
- <label style="margin-left:22px"><input type="radio" name="sex" value="all" checked> всех (по мужчинам и женщинам)</label>
- <label style="margin-left:22px"><input type="radio" name="sex" value="m"> только мужчин</label>
- <label><input type="radio" name="scope" value="desc"> 3. Все потомки — дети и их семейные связи (пол — по выбору выше)</label></div>
- <label><input type="checkbox" id="skipHidden" checked> Только открытые сведения: пропускать персоны с пометкой конфиденциальности («Скрытая персона»)</label>
- <label>Глубина (0 — без ограничений): <input type="number" id="depth" value="0" min="0" style="width:70px"></label>
+<h2><img src="icons/icon48.png" width="28" style="vertical-align:middle"> 🌳 WGIF <small style="color:#a33">тестовая версия 0.7.0 — ручное указание секторов</small></h2>
+<p style="margin:-6px 0 10px"><b>Welcome, Grafted Into the Fam!</b> <i>Добро пожаловать, привитые к нашей семье!</i></p>
+<fieldset><legend>Тип обработки: «Страница персоны» (все члены семьи указанной персоны)</legend>
+ Разделы: <b>События</b>, <b>Родственники</b>. Раздел «Обсуждение» не обрабатывается.<div id="auth">Проверка входа…</div></fieldset>
+<fieldset><legend>1. Укажите сектора на странице персоны</legend>
+ <small>Нажмите «Указать» — вкладка familio.org подсветит сектор под курсором; щёлкните по нужному (Esc — отмена). Для секторов «События» и «Родственники» сначала откройте нужную вкладку на сайте.</small>
+ <table id="sectors"></table>
+ <p><button id="check">Проверить разбор на открытой странице</button> <button id="reset">Сбросить сектора</button></p>
+ <pre id="prev" hidden></pre></fieldset>
+<fieldset><legend>2. Сбор</legend>
+ <label>Ссылка на персону: <input type="text" id="startUrl" style="width:560px"></label>
+ <label><input type="checkbox" id="follow"> Собрать также семьи родственников (переходить по их ссылкам). Глубина: <input type="number" id="depth" value="1" min="1" style="width:60px"> <small>1 — родственники указанной персоны</small></label>
  <label>Пауза между запросами, мс: <input type="number" id="delay" value="800" min="0" style="width:90px"></label>
-</fieldset>
-<fieldset><legend>3. Рабочая папка</legend>
- <label>Имя папки (дата добавится автоматически): <input type="text" id="folderName" value="Welcome_Familio"></label>
- <button id="pickDir">Выбрать расположение…</button> <span id="dirName">не выбрано</span>
- <small><br>Создаётся папка «имя_ГГГГ-ММ-ДД»: в ней Excel, GEDCOM, оригинал GEDCOM и папка media.</small></fieldset>
-<fieldset><legend>4. Сохранение результатов</legend>
- <label><input type="checkbox" id="outXlsx" checked> В отдельный файл Excel</label>
- <label><input type="checkbox" id="outGed"> Сравнить и дополнить свой файл GEDCOM (оригинал сохраняется): <input type="file" id="gedFile" accept=".ged"></label>
- <div style="margin-left:22px">При отличии данных:
- <label><input type="radio" name="act" value="replace"> полностью доверять источнику и ЗАМЕНИТЬ (автоматически)</label>
- <label><input type="radio" name="act" value="append" checked> вписывать дополнениями к существующим (автоматически)</label>
- <label><input type="radio" name="act" value="confirm"> замена или дополнение — с подтверждением</label>
- <label><input type="radio" name="act" value="new"> собрать всё в НОВЫЙ GEDCOM-файл</label></div>
- <label><input type="checkbox" id="saveMedia" checked> Сохранять фото и медиафайлы в папку media</label></fieldset>
-<fieldset><legend>Настройки сайта (профиль разбора, JSON)</legend>
- <small>Правила распознавания страниц familio.org. При смене вёрстки поправьте здесь.</small><textarea id="profile"></textarea></fieldset>
-<p><button class="go" id="start">Начать</button> <button id="pause" disabled>Пауза</button> <button id="stop" disabled>Стоп</button>
- <span id="count"></span></p>
-<div id="confirmBox" hidden><fieldset><legend>Подтверждение</legend><pre id="confirmText"></pre>
- <button data-a="replace">Заменить</button> <button data-a="append">Дополнить</button> <button data-a="skip">Пропустить</button></fieldset></div>
-<div id="log"></div><p><small><b>Наш девиз:</b> Welcome, Grafted Into the Fam! — «Связаны кровью, укреплены выбором». «Укоренены в прошлом, растём ради будущего».<br>Фомка добрых дел (Crowbar of Goodness): Мр. Фомка (Mr. Crowby) и Мастер Добрых дел</small></p></main>
-<script src="extract.js"></script><script src="gedcom.js"></script><script src="xlsx.js"></script><script src="app.js"></script></html>
+ <label>Имя рабочей папки (дата добавится): <input type="text" id="folderName" value="WGIF"> <button id="pickDir">Выбрать расположение…</button> <span id="dirName">не выбрано</span></label>
+ <label><input type="checkbox" id="outGed"> Сохранить также GEDCOM (новый файл)</label>
+ <small>Всегда создаётся Excel: «Карточки семей», «Люди», «События».</small></fieldset>
+<p><button class="go" id="start">Начать</button> <button id="pause" disabled>Пауза</button> <button id="stop" disabled>Стоп</button> <span id="count"></span></p>
+<div id="log"></div>
+<p><small>Фомка добрых дел (Crowbar of Goodness): Мр. Фомка (Mr. Crowby) и Мастер Добрых дел</small></p></main>
+<script src="extract.js"></script><script src="sectors.js"></script><script src="family.js"></script><script src="gedcom.js"></script><script src="xlsx.js"></script><script src="app.js"></script></html>

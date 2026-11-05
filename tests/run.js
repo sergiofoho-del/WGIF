@@ -40,3 +40,17 @@ const pn = E.parseName('Иванова (Жегалова) Мария Федор�
 assert2.deepStrictEqual(pn, { surname: 'Иванова', maiden: 'Жегалова', given: 'Мария', patronymic: 'Федоровна' });
 assert2.deepStrictEqual(E.parseName('Старкина Анастасия Федоровна'), { surname: 'Старкина', maiden: '', given: 'Анастасия', patronymic: 'Федоровна' });
 console.log('names: OK');
+const F = require('./../family.js');
+const mk = (id, s, g, fam, extra) => Object.assign({ id, url: 'u' + id, surname: s, given: g, patronymic: '', sex: 'M', family: fam || [], events: [] }, extra);
+const row = (id, rel, status, s, g, extra) => Object.assign({ id, rel, status, surname: s, given: g, patronymic: '', url: 'u' + id, sex: '' }, extra);
+const res = F.build([
+  mk('1', 'Иванов', 'Пётр', [row('2', 'spouses', 'Жена', 'Иванова', 'Мария', { maiden: 'Жегалова' }), row('3', 'children', 'Сын', 'Иванов', 'Иван'), row('3', 'children', 'Сын', 'Иванов', 'Иван'), row('4', 'father', 'Отец', 'Иванов', 'Фёдор')]),
+  mk('2', 'Иванова', 'Мария', [row('5', 'father', 'Отец', 'Жегалов', 'Пётр'), row('1', 'spouses', 'Муж', 'Иванов', 'Пётр'), row('3', 'children', 'Сын', 'Иванов', 'Иван')], { sex: 'F', maiden: 'Жегалова' })]);
+assert2.strictEqual(res.people.length, 5);                                  // 1,2,3,4,5 — без дублей
+assert2.strictEqual(res.cards[0].members.length, 3);                        // сын записан дважды — один раз
+const wife = res.cards[0].members.find((m) => m.id === '2');
+assert2.ok(wife.fromOtherFamily && wife.originCollected && /Жегалов/.test(wife.originParents));
+assert2.strictEqual(res.people.find((p) => p.id === '2').visited, true);
+assert2.ok(res.people.find((p) => p.id === '4').visited === false);
+assert2.deepStrictEqual(res.people.find((p) => p.id === '1').children, ['3']);
+console.log('family: OK', F.sheets(res)[0].rows.length);
